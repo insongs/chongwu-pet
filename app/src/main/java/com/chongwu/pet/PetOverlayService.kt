@@ -1,7 +1,6 @@
 ﻿package com.chongwu.pet
 
 import android.app.*
-import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Point
@@ -12,15 +11,10 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 
-/**
- * 桌面宠物悬浮窗服务
- *
- * 创建透明悬浮窗 → 显示 SheepView → 通过回调处理拖拽和攀爬。
- */
 class PetOverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
-    private lateinit var overlayView: FrameLayout
+    private var overlayView: FrameLayout? = null
     private lateinit var sheepView: SheepView
     private var layoutParams: WindowManager.LayoutParams? = null
 
@@ -35,7 +29,7 @@ class PetOverlayService : Service() {
         return point.y
     }
 
-    private val overlaySize = 240 // dp
+    private val overlaySize = 280
 
     companion object {
         const val NOTIFICATION_ID = 1001
@@ -54,7 +48,7 @@ class PetOverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (overlayView.parent == null) showOverlay()
+        if (overlayView == null) showOverlay()
         startForeground(NOTIFICATION_ID, createNotification())
         return START_STICKY_COMPATIBILITY
     }
@@ -63,34 +57,27 @@ class PetOverlayService : Service() {
 
     override fun onDestroy() { removeOverlay(); super.onDestroy() }
 
-    // ==================== 悬浮窗管理 ====================
-
     private fun showOverlay() {
         val density = resources.displayMetrics.density
         val sizePx = (overlaySize * density).toInt()
 
-        overlayView = FrameLayout(this).apply {
+        val frame = FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             isClickable = true
             isFocusable = false
         }
 
-        // 创建小羊并绑定拖拽回调
         sheepView = SheepView(this).apply {
             layoutParams = FrameLayout.LayoutParams(sizePx, sizePx)
-
             onDragStart = { isDragging = false; isEdgeClimbing = false }
             onDragMove = { dx, dy -> handleDragDelta(dx, dy) }
             onDragEnd = { finishDrag() }
         }
-        overlayView.addView(sheepView)
+        frame.addView(sheepView)
 
         layoutParams = WindowManager.LayoutParams(
             sizePx, sizePx,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
@@ -101,17 +88,19 @@ class PetOverlayService : Service() {
             y = (screenHeight - sizePx) / 3
         }
 
-        try { windowManager.addView(overlayView, layoutParams) }
+        overlayView = frame
+        try { windowManager.addView(frame, layoutParams) }
         catch (_: Exception) { stopSelf() }
     }
 
     private fun removeOverlay() {
-        try { if (overlayView.parent != null) windowManager.removeView(overlayView) }
-        catch (_: Exception) {}
+        overlayView?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        overlayView = null
     }
 
     // ==================== 拖拽 & 攀爬 ====================
-
     private var isDragging = false
     private var isEdgeClimbing = false
     private var lastDeltaX = 0f
@@ -128,22 +117,19 @@ class PetOverlayService : Service() {
             params.y = (params.y + (dy - lastDeltaY).toInt())
                 .coerceIn(-overlaySize / 3, screenHeight - overlaySize / 3)
 
-            // 检测贴边 → 进入攀爬模式
             val threshold = 80
             val nearEdge = params.x < threshold || params.x > screenWidth - overlaySize - threshold ||
                     params.y < threshold || params.y > screenHeight - overlaySize - threshold
             if (nearEdge && dist > 30) {
                 isEdgeClimbing = true
                 sheepView.isClimbing = true
-                sheepView.setAction(SheepView.Action.CLIMBING)
             }
         } else {
             climbAlongEdge(params, (dx - lastDeltaX).toInt(), (dy - lastDeltaY).toInt())
         }
 
         lastDeltaX = dx; lastDeltaY = dy
-
-        try { windowManager.updateViewLayout(overlayView, params) }
+        try { overlayView?.let { windowManager.updateViewLayout(it, params) } }
         catch (_: Exception) {}
     }
 
@@ -161,7 +147,6 @@ class PetOverlayService : Service() {
     private fun finishDrag() {
         if (isEdgeClimbing) {
             sheepView.isClimbing = false
-            sheepView.setAction(SheepView.Action.IDLE)
             isEdgeClimbing = false
         }
         if (isDragging) snapToEdge()
@@ -169,23 +154,18 @@ class PetOverlayService : Service() {
         lastDeltaX = 0f; lastDeltaY = 0f
     }
 
-    /** 松手 → 吸附到最近边缘 */
     private fun snapToEdge() {
         val params = layoutParams ?: return
         val threshold = 120
-
         if (params.y < threshold) params.y = 0
         else if (params.y > screenHeight - overlaySize - threshold) params.y = screenHeight - overlaySize
-
         if (params.x < threshold) params.x = 0
         else if (params.x > screenWidth - overlaySize - threshold) params.x = screenWidth - overlaySize
-
-        try { windowManager.updateViewLayout(overlayView, params) }
+        try { overlayView?.let { windowManager.updateViewLayout(it, params) } }
         catch (_: Exception) {}
     }
 
     // ==================== 通知 ====================
-
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
