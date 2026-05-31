@@ -1,0 +1,17 @@
+﻿{
+    "name": "咩咩宠物",
+    "short_name": "咩咩",
+    "description": "一只可爱的桌面宠物小羊",
+    "start_url": "sheep.html",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#FFF8F0",
+    "theme_color": "#667eea",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 108'%3E%3Crect width='108' height='108' fill='%23C8E6C9'/%3E%3Ccircle cx='54' cy='55' r='25' fill='%23FFF0E8'/%3E%3Ccircle cx='54' cy='35' r='18' fill='%23FFF5F0'/%3E%3C/svg%3E",
+            "sizes": "108x108",
+            "type": "image/svg+xml"
+        }
+    ]
+}

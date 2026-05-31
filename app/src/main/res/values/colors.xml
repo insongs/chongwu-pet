@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sheep_white">#FFF5F0</color>
+    <color name="sheep_wool">#FFF0E8</color>
+    <color name="sheep_shadow">#E8D5C8</color>
+    <color name="sheep_skin">#FFDBB8</color>
+    <color name="eye_black">#2C2C2C</color>
+    <color name="eye_highlight">#FFFFFF</color>
+    <color name="nose_pink">#FF8FAB</color>
+    <color name="cheek_pink">#FFB5C8</color>
+    <color name="horn_brown">#8B7355</color>
+    <color name="horn_dark">#6B5335</color>
+    <color name="mouth_red">#D4596B</color>
+    <color name="overlay_bg">#00000000</color>
+</resources>

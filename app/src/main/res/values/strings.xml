@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">咩咩宠物</string>
+    <string name="overlay_channel_name">咩咩宠物服务</string>
+    <string name="overlay_channel_desc">桌面宠物后台服务</string>
+    <string name="overlay_notification_text">咩咩正在屏幕上游玩~</string>
+    <string name="permission_overlay">请允许悬浮窗权限，这样咩咩才能出现在屏幕上</string>
+    <string name="stop_service">停止宠物</string>
+    <string name="start_service">启动宠物</string>
+</resources>

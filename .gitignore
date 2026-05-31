@@ -1,0 +1,25 @@
+﻿# Android
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# App
+app/build/
+
+# IDE
+*.swp
+*swo
+*~
+.DS_Store
+
+# Node (just in case)
+node_modules/
+.npm-cache/
+server.js

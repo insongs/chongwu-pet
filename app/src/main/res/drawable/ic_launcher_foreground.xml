@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 小羊身体 -->
+    <path
+        android:fillColor="#FFF0E8"
+        android:pathData="M32,62 C32,45 42,35 54,35 C66,35 76,45 76,62 C76,72 66,78 54,78 C42,78 32,72 32,62 Z" />
+    <!-- 小羊头部 -->
+    <path
+        android:fillColor="#FFF5F0"
+        android:pathData="M40,40 C40,28 48,22 54,22 C60,22 68,28 68,40 C68,48 60,52 54,52 C48,52 40,48 40,40 Z" />
+    <!-- 左角 -->
+    <path
+        android:fillColor="#8B7355"
+        android:pathData="M46,28 C44,18 40,14 36,16 C34,17 36,22 40,26" />
+    <!-- 右角 -->
+    <path
+        android:fillColor="#8B7355"
+        android:pathData="M62,28 C64,18 68,14 72,16 C74,17 72,22 68,26" />
+    <!-- 左眼 -->
+    <path
+        android:fillColor="#2C2C2C"
+        android:pathData="M48,35 C48,33 50,32 51,33 C52,34 52,37 51,38 C50,39 48,38 48,35 Z" />
+    <!-- 右眼 -->
+    <path
+        android:fillColor="#2C2C2C"
+        android:pathData="M60,35 C60,33 58,32 57,33 C56,34 56,37 57,38 C58,39 60,38 60,35 Z" />
+    <!-- 鼻子 -->
+    <path
+        android:fillColor="#FF8FAB"
+        android:pathData="M51,42 L57,42 L54,46 Z" />
+    <!-- 左腿 -->
+    <path
+        android:fillColor="#FFDBB8"
+        android:pathData="M40,70 L44,70 L44,84 L40,84 Z" />
+    <!-- 右腿 -->
+    <path
+        android:fillColor="#FFDBB8"
+        android:pathData="M64,70 L68,70 L68,84 L64,84 Z" />
+    <!-- 尾巴 -->
+    <path
+        android:fillColor="#FFF0E8"
+        android:pathData="M74,58 C80,56 82,60 80,64 C78,66 74,62 74,58 Z" />
+</vector>
