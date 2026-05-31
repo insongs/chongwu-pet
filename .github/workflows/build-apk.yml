@@ -1,7 +1,7 @@
 ﻿name: 🐑 编译咩咩宠物 APK
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   push:
     branches: [ main, master ]
 
@@ -10,8 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 下载代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: 设置 JDK 17
         uses: actions/setup-java@v4
@@ -22,15 +21,21 @@ jobs:
       - name: 设置 Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 赋予 Gradlew 权限
-        run: chmod +x gradlew
+      - name: 安装 SDK 组件
+        run: |
+          yes | sdkmanager --install "platforms;android-34" "build-tools;34.0.0" 2>&1 || true
+
+      - name: 安装 Gradle 8.5（与项目兼容）
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.5"
 
       - name: 编译 APK
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug --stacktrace
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: '🐑 咩咩宠物 APK'
+          name: 咩咩宠物APK
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
