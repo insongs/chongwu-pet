@@ -1,9 +1,7 @@
 ﻿package com.chongwu.pet
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.*
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -13,595 +11,364 @@ import kotlin.math.*
 import kotlin.random.Random
 
 /**
- * 咩咩宠物主视图 —— Canvas 绘制 & 触摸交互
- *
- * 小羊全部用 Canvas 2D 绘制，无需任何图片资源！
+ * 咩咩宠物 - 纯 Canvas 绘制的卡通小羊
+ * 使用 Color.argb() 保证跨版本兼容
  */
 class SheepView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    // ==================== 枚举 ====================
-
-    /** 身体部位 */
-    enum class BodyPart {
-        HEAD, HORN_LEFT, HORN_RIGHT, BODY, LEG_FL, LEG_FR, LEG_BL, LEG_BR, TAIL, NONE
+    // ==================== 颜色 ====================
+    companion object {
+        // 使用 argb() 确保在所有 Android 版本上颜色正确
+        private val C_WOOL = Color.argb(255, 255, 240, 232)
+        private val C_WOOL_LIGHT = Color.argb(255, 255, 245, 238)
+        private val C_WOOL_SHADOW = Color.argb(255, 232, 213, 200)
+        private val C_SKIN = Color.argb(255, 255, 245, 240)
+        private val C_EAR = Color.argb(255, 255, 228, 214)
+        private val C_EAR_INNER = Color.argb(255, 255, 181, 200)
+        private val C_HORN = Color.argb(255, 139, 115, 85)
+        private val C_HORN_DARK = Color.argb(255, 107, 83, 53)
+        private val C_EYE = Color.argb(255, 44, 44, 44)
+        private val C_NOSE = Color.argb(255, 255, 143, 171)
+        private val C_MOUTH = Color.argb(255, 212, 89, 107)
+        private val C_CHEEK = Color.argb(255, 255, 181, 200)
+        private val C_LEG = Color.argb(255, 255, 219, 184)
+        private val C_HOOF = Color.argb(255, 212, 168, 140)
+        private const val BASE = 300f
     }
 
-    /** 表情 */
-    enum class Expression {
-        HAPPY, SAD, ANGRY, SURPRISED, SLEEPY, DIZZY, INNOCENT, CONTENT, LAUGHING
-    }
+    enum class BodyPart { HEAD, HORN_LEFT, HORN_RIGHT, BODY, LEG, TAIL, NONE }
 
-    /** 动作状态 */
-    enum class Action {
-        IDLE, WALKING, JUMPING, FALLING, CLIMBING, SLEEPING, SCRATCHING, EATING, DIZZY_SPIN, HOPPING
-    }
-
-    // ==================== 状态 ====================
-
-    var expression: Expression = Expression.HAPPY
-        private set
-    var action: Action = Action.IDLE
-        private set
-    private var animTime = 0f
-    private var bounceOffset = 0f
-    private var jumpHeight = 0f
-    private var tiltAngle = 0f
-    private var scaleX = 1f
-    private var scaleY = 1f
-
-    // 攀爬相关
+    var expression = "HAPPY"; private set
+    var action = "IDLE"; private set
     var isClimbing = false
-    var climbDirection = 1f // 1=向上/右, -1=向下/左
-    var climbProgress = 0f
-
-    // 交互回调（给 OverlayService 使用）
     var onPartTouched: ((BodyPart) -> Unit)? = null
     var onDragStart: (() -> Unit)? = null
-    var onDragMove: ((dx: Float, dy: Float) -> Unit)? = null
+    var onDragMove: ((Float, Float) -> Unit)? = null
     var onDragEnd: (() -> Unit)? = null
 
-    // 特效可见性
-    private var showHearts = false
-    private var showStars = false
-    private var showTears = false
-    private var showZzz = false
-    private var showExclamation = false
-    private var showNote = false
-    private var showBlushBoost = false
-    private var effectTime = 0f
-
-    // 行走/攀爬 腿部动画
+    private var animTime = 0f
     private var legPhase = 0f
+    private var jumpH = 0f
+    private var bounce = 0f
+    private var tilt = 0f
+    private var sx = 1f; private var sy = 1f
+    private var fxHearts = 0f; private var fxStars = 0f
+    private var fxExclaim = 0f; private var fxNote = 0f; private var fxBlush = 0f
+    private var dragRX = 0f; private var dragRY = 0f; private var dragging = false
 
-    // 画笔
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val paintStroke = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ps = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val path = Path()
-    private val rectF = RectF()
-
-    // 主handler
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLooper())
 
     // ==================== 动画循环 ====================
-
-    private var isAnimating = false
-    private var hasPendingIdleAction = false
-    private val animRunnable = object : Runnable {
+    private val animLoop = object : Runnable {
         override fun run() {
-            val dt = 0.016f // ~60fps
+            val dt = 0.016f
             animTime += dt
-            legPhase += dt * (if (isClimbing) 6f else if (action == Action.WALKING) 4f else 1.2f)
+            legPhase += dt * (if (isClimbing) 6f else 1.2f)
 
-                        // 空闲时呼吸/微小晃动
-            if (action == Action.IDLE) {
-                bounceOffset = sin(animTime * 1.5f) * 1.5f
-                tiltAngle = sin(animTime * 0.8f) * 0.5f
-                // 随机空闲动作（约每8秒触发一次）
-                if (sin(animTime * 0.13f) > 0.98f && !hasPendingIdleAction) {
-                    hasPendingIdleAction = true
-                    mainHandler.postDelayed({
-                        val rand = (animTime * 7f).toInt() % 4
-                        when (rand) {
-                            0 -> { expression = Expression.CONTENT; showHearts = true; effectTime = 1.2f }
-                            1 -> { tiltAngle = 15f; mainHandler.postDelayed({ tiltAngle = 0f }, 400) }
-                            2 -> { setAction(Action.HOPPING); animTime = 0f; jumpHeight = sin(animTime * 8f) * 25f }
-                            3 -> { expression = Expression.INNOCENT }
-                        }
-                        hasPendingIdleAction = false
-                        expression = Expression.HAPPY
-                    }, 200)
-                }
+            if (action == "IDLE") {
+                bounce = sin(animTime * 1.5f) * 1.5f
+                tilt = sin(animTime * 0.8f) * 0.5f
             }
-            if (action == Action.IDLE) {
-                bounceOffset = sin(animTime * 1.5f) * 1.5f
-                tiltAngle = sin(animTime * 0.8f) * 0.5f
+            if (action == "JUMPING") {
+                jumpH = sin(animTime * 6f) * 60f
+                sx = 1f + cos(animTime * 6f) * 0.08f
+                sy = 1f - cos(animTime * 6f) * 0.08f
+                tilt = if (jumpH > 0) 5f else -5f
+                if (animTime > PI / 6f) { action = "IDLE"; jumpH = 0f; sx = 1f; sy = 1f; tilt = 0f }
+            }
+            if (action == "HOPPING") {
+                jumpH = abs(sin(animTime * 8f)) * 25f
+                if (animTime > PI / 4f) { action = "IDLE"; jumpH = 0f }
             }
 
-            // 特效倒计时
-            if (showHearts || showStars || showTears || showZzz || showExclamation || showNote || showBlushBoost) {
-                effectTime -= dt
-                if (effectTime <= 0) {
-                    showHearts = false; showStars = false; showTears = false
-                    showZzz = false; showExclamation = false; showNote = false; showBlushBoost = false
-                }
-            }
-
-                        // 跳跃/小跳物理
-            if (action == Action.HOPPING) {
-                jumpHeight = abs(sin(animTime * 8f)) * 25f
-                scaleX = 1f + sin(animTime * 8f) * 0.06f
-                scaleY = 1f - sin(animTime * 8f) * 0.06f
-                if (animTime > PI / 4f) { setAction(Action.IDLE); jumpHeight = 0f; scaleX = 1f; scaleY = 1f }
-            }
-
-            // 跳跃物理
-            if (action == Action.JUMPING) {
-                jumpHeight = sin(animTime * 6f) * 60f
-                scaleX = 1f + cos(animTime * 6f) * 0.08f
-                scaleY = 1f - cos(animTime * 6f) * 0.08f
-                tiltAngle = if (jumpHeight > 0) 5f else -5f
-                if (animTime > PI / 6f) {
-                    setAction(Action.IDLE)
-                    jumpHeight = 0f; scaleX = 1f; scaleY = 1f; tiltAngle = 0f
-                }
-            }
-
-            // 攀爬
-            if (isClimbing) {
-                tiltAngle = cos(legPhase * 0.5f) * 3f
-                climbProgress += dt * 0.3f * climbDirection
-            }
+            fxHearts = max(0f, fxHearts - dt)
+            fxStars = max(0f, fxStars - dt)
+            fxExclaim = max(0f, fxExclaim - dt)
+            fxNote = max(0f, fxNote - dt)
+            fxBlush = max(0f, fxBlush - dt)
+            if (isClimbing) tilt = cos(legPhase * 0.5f) * 3f
 
             invalidate()
-            isAnimating = true
-            mainHandler.postDelayed(this, 16L)
+            handler.postDelayed(this, 16L)
         }
     }
 
     init {
-        paintStroke.style = Paint.Style.STROKE
-        startAnimation()
-    }
-
-    private fun startAnimation() {
-        if (!isAnimating) {
-            mainHandler.post(animRunnable)
-        }
+        handler.post(animLoop)
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        isAnimating = false
-        mainHandler.removeCallbacks(animRunnable)
+        handler.removeCallbacks(animLoop)
     }
 
-    // ==================== 动作触发 ====================
+    fun setAction(a: String) { action = a; animTime = 0f; invalidate() }
 
-    fun setExpression(expr: Expression) {
-        expression = expr
-        invalidate()
-    }
-
-    fun setAction(act: Action) {
-        action = act
-        animTime = 0f
-        invalidate()
-    }
-
-    /** 触摸部位 -> 反应 */
-    fun reactToPart(part: BodyPart) {
-        when (part) {
-            BodyPart.HEAD -> {
-                expression = Expression.HAPPY
-                setAction(Action.JUMPING)
-                showHearts = true; effectTime = 1.5f
-            }
-            BodyPart.HORN_LEFT, BodyPart.HORN_RIGHT -> {
-                expression = Expression.DIZZY
-                setAction(Action.DIZZY_SPIN)
-                showStars = true; effectTime = 2f
-            }
-            BodyPart.BODY -> {
-                expression = Expression.CONTENT
-                showHearts = true; showBlushBoost = true; effectTime = 2f
-            }
-            BodyPart.LEG_FL, BodyPart.LEG_FR, BodyPart.LEG_BL, BodyPart.LEG_BR -> {
-                expression = Expression.SURPRISED
-                showExclamation = true; effectTime = 1f
-            }
-            BodyPart.TAIL -> {
-                expression = Expression.LAUGHING
-                showNote = true; effectTime = 1.5f
-            }
-            BodyPart.NONE -> {}
-        }
-        invalidate()
-    }
-
-    // ==================== 触摸处理 ====================
-
-    private var dragStartRawX = 0f
-    private var dragStartRawY = 0f
-    private var isDragging = false
-    private var touchDownTime = 0L
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        val rawX = event.rawX
-        val rawY = event.rawY
-
-        when (event.action) {
+    // ==================== 触摸 ====================
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.action) {
             MotionEvent.ACTION_DOWN -> {
-                touchDownTime = System.currentTimeMillis()
-                dragStartRawX = rawX
-                dragStartRawY = rawY
-                isDragging = false
-                onDragStart?.invoke()
-                return true
+                dragRX = e.rawX; dragRY = e.rawY; dragging = false
+                onDragStart?.invoke(); return true
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = rawX - dragStartRawX
-                val dy = rawY - dragStartRawY
-                val dist = sqrt(dx * dx + dy * dy)
-                if (dist > 15f) {
-                    isDragging = true
-                    onDragMove?.invoke(dx, dy)
-                }
+                val dx = e.rawX - dragRX; val dy = e.rawY - dragRY
+                if (sqrt(dx * dx + dy * dy) > 15f) { dragging = true; onDragMove?.invoke(dx, dy) }
             }
             MotionEvent.ACTION_UP -> {
-                if (!isDragging) {
-                    // 点击：判断点击的身体部位
-                    val part = detectBodyPart(event.x, event.y)
-                    reactToPart(part)
-                    onPartTouched?.invoke(part)
-                } else {
-                    isDragging = false
-                    onDragEnd?.invoke()
-                }
+                if (!dragging) {
+                    val part = detectPart(e.x, e.y)
+                    react(part); onPartTouched?.invoke(part)
+                } else { onDragEnd?.invoke(); dragging = false }
             }
         }
         return true
     }
 
-    /** 检测点击到哪个身体部位 */
-    private fun detectBodyPart(x: Float, y: Float): BodyPart {
-        val w = width.toFloat(); val h = height.toFloat()
-        val cx = w / 2f; val cy = h / 2f
-        val s = min(w, h) / baseSize
-
-        // 头部区域
-        val headCX = cx; val headCY = cy - 70f * s
-        if (dist(x, y, headCX, headCY) < 40f * s) {
-            // 检查角
-            if (dist(x, y, headCX - 32f * s, headCY - 40f * s) < 20f * s) return BodyPart.HORN_LEFT
-            if (dist(x, y, headCX + 32f * s, headCY - 40f * s) < 20f * s) return BodyPart.HORN_RIGHT
-            return BodyPart.HEAD
+    private fun detectPart(x: Float, y: Float): BodyPart {
+        val cx = width / 2f; val cy = height / 2f; val s = min(width.coerceAtLeast(1), height.coerceAtLeast(1)) / BASE
+        return when {
+            dist(x, y, cx, cy - 70 * s) < 40 * s -> {
+                if (dist(x, y, cx - 32 * s, cy - 110 * s) < 20 * s) BodyPart.HORN_LEFT
+                else if (dist(x, y, cx + 32 * s, cy - 110 * s) < 20 * s) BodyPart.HORN_RIGHT
+                else BodyPart.HEAD
+            }
+            dist(x, y, cx, cy + 20 * s) < 55 * s -> BodyPart.BODY
+            dist(x, y, cx - 35 * s, cy + 70 * s) < 25 * s -> BodyPart.LEG
+            dist(x, y, cx + 35 * s, cy + 70 * s) < 25 * s -> BodyPart.LEG
+            dist(x, y, cx + 65 * s, cy + 10 * s) < 20 * s -> BodyPart.TAIL
+            else -> BodyPart.NONE
         }
-        // 身体区域
-        val bodyCX = cx; val bodyCY = cy + 20f * s
-        if (dist(x, y, bodyCX, bodyCY) < 55f * s) return BodyPart.BODY
-        // 腿
-        if (dist(x, y, cx - 35f * s, cy + 70f * s) < 18f * s) return BodyPart.LEG_FL
-        if (dist(x, y, cx + 35f * s, cy + 70f * s) < 18f * s) return BodyPart.LEG_FR
-        if (dist(x, y, cx - 40f * s, cy + 65f * s) < 18f * s) return BodyPart.LEG_BL
-        if (dist(x, y, cx + 40f * s, cy + 65f * s) < 18f * s) return BodyPart.LEG_BR
-        // 尾巴
-        if (dist(x, y, cx + 65f * s, cy + 10f * s) < 20f * s) return BodyPart.TAIL
-        return BodyPart.NONE
     }
 
     private fun dist(x1: Float, y1: Float, x2: Float, y2: Float) = sqrt((x1 - x2).pow(2) + (y1 - y2).pow(2))
 
-    companion object {
-        private const val baseSize = 300f // 参考尺寸
+    private fun react(part: BodyPart) {
+        when (part) {
+            BodyPart.HEAD -> { expression = "HAPPY"; setAction("JUMPING"); fxHearts = 1.5f }
+            BodyPart.HORN_LEFT, BodyPart.HORN_RIGHT -> { expression = "DIZZY"; fxStars = 2f }
+            BodyPart.BODY -> { expression = "CONTENT"; fxHearts = 2f; fxBlush = 2f }
+            BodyPart.LEG -> { expression = "SURPRISED"; fxExclaim = 1f }
+            BodyPart.TAIL -> { expression = "LAUGHING"; fxNote = 1.5f }
+            BodyPart.NONE -> {}
+        }
+        invalidate()
     }
 
-    // ==================== 绘制 ====================
-
+    // ==================== 核心绘制 ====================
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val w = width.toFloat(); val h = height.toFloat()
+        val w = width.coerceAtLeast(1).toFloat()
+        val h = height.coerceAtLeast(1).toFloat()
+        val s = min(w, h) / BASE
+
         canvas.save()
+        canvas.translate(w / 2, h / 2)
+        canvas.scale(s * sx, s * sy)
+        canvas.rotate(tilt)
+        canvas.translate(0f, -bounce - jumpH)
+        if (isClimbing) canvas.translate(sin(legPhase * 2) * 5, 0f)
 
-        // 缩放和平移
-        val s = min(w, h) / baseSize
-        canvas.translate(w / 2f, h / 2f)
-        canvas.scale(s * scaleX, s * scaleY)
-        canvas.rotate(tiltAngle)
-        canvas.translate(0f, -bounceOffset)
+        // ===== 先画一朵云做底板（确保能看到东西） =====
+        p.style = Paint.Style.FILL
 
-        // 跳跃偏移
-        if (action == Action.JUMPING) canvas.translate(0f, -jumpHeight)
-        // 攀爬偏移
-        if (isClimbing) canvas.translate(sin(legPhase * 2f) * 5f, 0f)
-
-        // ---- 绘制顺序（从后到前） ----
-        drawTail(canvas)
-        drawBackLegs(canvas)
-        drawBody(canvas)
-        drawFrontLegs(canvas)
-        drawHead(canvas)
-        drawEars(canvas)
-        drawHorns(canvas)
-        drawFace(canvas)
-
-        // ---- 特效 ----
-        drawEffects(canvas)
+        // 尾巴（最底层）
+        drawTail(c)
+        // 后腿
+        drawLeg(c, -35f, 35f, -6f, legPhase, false)
+        drawLeg(c, 29f, 35f, 6f, legPhase + PI.toFloat(), false)
+        // 身体 - 大云朵形状
+        drawBody(c)
+        // 前腿
+        drawLeg(c, -30f, 40f, -7f, legPhase + PI.toFloat(), true)
+        drawLeg(c, 24f, 40f, 7f, legPhase, true)
+        // 头
+        drawHead(c)
+        // 耳朵
+        drawEar(c, -18f, true); drawEar(c, 18f, false)
+        // 角
+        drawHorn(c, -1f); drawHorn(c, 1f)
+        // 脸
+        drawFace(c)
+        // 特效
+        drawFX(c)
 
         canvas.restore()
     }
 
-    /** 绘制身体（毛茸茸的椭圆形+绒毛） */
-    private fun drawBody(canvas: Canvas) {
-        paint.color = Color.parseColor("#FFF0E8") // 羊毛色
-        paint.style = Paint.Style.FILL
-        canvas.drawOval(-70f, -30f, 70f, 55f, paint)
+    // ---- 身体 ----
+    private fun drawBody(c: Canvas) {
+        p.color = C_WOOL
+        c.drawOval(-75f, -32f, 75f, 58f, p)  // 主身体
+        // 绒毛 - 围绕身体画一圈小圆
+        p.color = C_WOOL_LIGHT
+        val fluffPositions = arrayOf(
+            floatArrayOf(-60f, -35f, 18f), floatArrayOf(-40f, -40f, 20f), floatArrayOf(-20f, -42f, 18f),
+            floatArrayOf(0f, -40f, 16f), floatArrayOf(20f, -42f, 18f), floatArrayOf(40f, -40f, 20f),
+            floatArrayOf(60f, -35f, 18f), floatArrayOf(68f, -15f, 16f), floatArrayOf(70f, 5f, 17f),
+            floatArrayOf(-68f, -15f, 16f), floatArrayOf(-70f, 5f, 17f), floatArrayOf(-60f, 35f, 15f),
+            floatArrayOf(60f, 35f, 15f), floatArrayOf(0f, 50f, 14f), floatArrayOf(-25f, 52f, 12f), floatArrayOf(25f, 52f, 12f)
+        )
+        for (f in fluffPositions) c.drawCircle(f[0], f[1], f[2] + sin(animTime * 2f + f[0] * 0.1f) * 2f, p)
 
-        // 绒毛质感 - 多个小圆
-        paint.color = Color.parseColor("#FFF5EE")
-        for (i in 0 until 12) {
-            val angle = i * (PI / 6)
-            val rx = 60f * cos(angle).toFloat()
-            val ry = 42f * sin(angle).toFloat()
-            val r = 18f + sin(i * 3f + animTime * 2f) * 3f
-            canvas.drawCircle(rx, ry, r, paint)
-        }
-
-        // 阴影
-        paint.color = Color.parseColor("#E8D5C8")
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f
-        canvas.drawOval(-68f, -28f, 68f, 53f, paint)
-        paint.style = Paint.Style.FILL
+        p.style = Paint.Style.STROKE; p.color = C_WOOL_SHADOW; p.strokeWidth = 1.5f
+        c.drawOval(-74f, -31f, 74f, 57f, p); p.style = Paint.Style.FILL
     }
 
-    /** 头部 */
-    private fun drawHead(canvas: Canvas) {
-        paint.color = Color.parseColor("#FFF5F0")
-        canvas.drawOval(-38f, -88f, 38f, -22f, paint)
-
-        // 耳朵下的小绒毛
-        paint.color = Color.parseColor("#FFF0E8")
-        canvas.drawCircle(-42f, -60f, 15f, paint)
-        canvas.drawCircle(42f, -60f, 15f, paint)
+    // ---- 腿 ----
+    private fun drawLeg(c: Canvas, dx: Float, dy: Float, ox: Float, phase: Float, front: Boolean) {
+        p.color = C_LEG
+        val off = sin(phase) * 6f
+        val len = if (front) 32f else 30f
+        val w = 14f
+        val lx = dx + off * 0.3f
+        c.save()
+        c.rotate(off * 0.5f, dx, dy)
+        c.drawRoundRect(lx - w / 2, dy, lx + w / 2, dy + len, 6f, 6f, p)
+        // 蹄子
+        p.color = C_HOOF
+        c.drawRoundRect(lx - w / 2, dy + len - 8f, lx + w / 2, dy + len, 4f, 4f, p)
+        c.restore()
+        p.color = C_LEG
     }
 
-    /** 耳朵 */
-    private fun drawEars(canvas: Canvas) {
-        paint.color = Color.parseColor("#FFE4D6")
-        // 左耳（下垂）
-        canvas.save(); canvas.rotate(-20f, -38f, -70f)
-        canvas.drawOval(-50f, -80f, -26f, -54f, paint)
-        canvas.restore()
-        // 右耳（下垂）
-        canvas.save(); canvas.rotate(20f, 38f, -70f)
-        canvas.drawOval(26f, -80f, 50f, -54f, paint)
-        canvas.restore()
-
-        // 耳朵内侧粉色
-        paint.color = Color.parseColor("#FFB5C8")
-        canvas.save(); canvas.rotate(-20f, -38f, -70f)
-        canvas.drawOval(-46f, -76f, -30f, -58f, paint)
-        canvas.restore()
-        canvas.save(); canvas.rotate(20f, 38f, -70f)
-        canvas.drawOval(30f, -76f, 46f, -58f, paint)
-        canvas.restore()
+    // ---- 头 ----
+    private fun drawHead(c: Canvas) {
+        p.color = C_SKIN
+        c.drawOval(-40f, -90f, 40f, -20f, p)  // 主头部
+        // 头部绒毛
+        p.color = C_WOOL_LIGHT
+        c.drawCircle(-35f, -55f, 12f, p); c.drawCircle(35f, -55f, 12f, p)
+        c.drawCircle(0f, -88f, 10f, p); c.drawCircle(-20f, -85f, 9f, p); c.drawCircle(20f, -85f, 9f, p)
     }
 
-    /** 角 - 螺旋弯曲 */
-    private fun drawHorns(canvas: Canvas) {
-        paint.color = Color.parseColor("#8B7355")
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 10f
-        paint.strokeCap = Paint.Cap.ROUND
-
-        // 左角
-        path.reset(); path.moveTo(-24f, -82f)
-        path.cubicTo(-38f, -98f, -50f, -104f, -42f, -112f)
-        path.cubicTo(-34f, -120f, -18f, -116f, -20f, -106f)
-        canvas.drawPath(path, paint)
-
-        // 右角
-        path.reset(); path.moveTo(24f, -82f)
-        path.cubicTo(38f, -98f, 50f, -104f, 42f, -112f)
-        path.cubicTo(34f, -120f, 18f, -116f, 20f, -106f)
-        canvas.drawPath(path, paint)
-
-        // 角上纹路
-        paint.color = Color.parseColor("#6B5335")
-        paint.strokeWidth = 3f
-        for (i in 0..2) {
-            val t = i * 0.3f + 0.1f
-            val lx = lerp(-24f, -20f, t); val ly = lerp(-82f, -106f, t)
-            canvas.drawLine(lx, ly, lx + 6f, ly - 4f, paint)
-            val rx = lerp(24f, 20f, t); val ry = lerp(-82f, -106f, t)
-            canvas.drawLine(rx, ry, rx - 6f, ry - 4f, paint)
-        }
-        paint.style = Paint.Style.FILL
-        paint.strokeWidth = 0f
+    // ---- 耳朵 ----
+    private fun drawEar(c: Canvas, dx: Float, left: Boolean) {
+        p.color = C_EAR
+        val angle = if (left) -25f else 25f
+        c.save(); c.rotate(angle, dx * 2.1f, -65f)
+        c.drawOval(dx * 2.1f - 12f, -75f, dx * 2.1f + 12f, -50f, p)
+        p.color = C_EAR_INNER
+        c.drawOval(dx * 2.1f - 7f, -72f, dx * 2.1f + 7f, -54f, p)
+        c.restore()
+        p.color = C_EAR
     }
 
-    /** 脸部：眼睛、鼻子、嘴巴、腮红 */
-    private fun drawFace(canvas: Canvas) {
-        // ---- 眼睛 ----
-        val eyeY = -63f
-        paint.color = Color.parseColor("#2C2C2C")
-        paint.style = Paint.Style.FILL
+    // ---- 角 ----
+    private fun drawHorn(c: Canvas, dir: Float) {
+        ps.color = C_HORN; ps.strokeWidth = 9f; ps.strokeCap = Paint.Cap.ROUND
+        val dx = dir * 24f
+        path.reset(); path.moveTo(dx, -84f)
+        path.cubicTo(dx + dir * 14f, -100f, dx + dir * 26f, -106f, dx + dir * 18f, -114f)
+        path.cubicTo(dx + dir * 10f, -122f, dx - dir * 6f, -118f, dx - dir * 4f, -108f)
+        c.drawPath(path, ps)
+    }
 
+    // ---- 脸 ----
+    private fun drawFace(c: Canvas) {
+        // 眼睛
+        p.color = C_EYE
+        val ex = 15f; val ey = -62f
         when (expression) {
-            Expression.HAPPY -> {
-                paint.strokeWidth = 3f; paint.style = Paint.Style.STROKE
-                canvas.drawArc(-22f, -68f, -10f, -58f, 0f, -180f, false, paint)
-                canvas.drawArc(10f, -68f, 22f, -58f, 0f, -180f, false, paint)
-                paint.style = Paint.Style.FILL
+            "HAPPY" -> {
+                ps.color = C_EYE; ps.strokeWidth = 3f; ps.style = Paint.Style.STROKE
+                c.drawArc(-ex - 7f, ey - 5f, -ex + 7f, ey + 5f, 0f, -180f, false, ps)
+                c.drawArc(ex - 7f, ey - 5f, ex + 7f, ey + 5f, 0f, -180f, false, ps)
+                ps.style = Paint.Style.FILL
             }
-            Expression.SAD -> {
-                canvas.drawCircle(-16f, -63f, 6f, paint); canvas.drawCircle(16f, -63f, 6f, paint)
-                paint.color = Color.parseColor("#87CEEB")
-                canvas.drawOval(-20f, -56f, -12f, -48f, paint); canvas.drawOval(12f, -56f, 20f, -48f, paint)
-                paint.color = Color.parseColor("#2C2C2C")
+            "SURPRISED" -> {
+                c.drawCircle(-ex, ey, 8f, p); c.drawCircle(ex, ey, 8f, p)
+                p.color = Color.WHITE; c.drawCircle(-ex + 2f, ey - 2f, 3f, p); c.drawCircle(ex + 2f, ey - 2f, 3f, p)
+                p.color = C_EYE
             }
-            Expression.ANGRY -> {
-                paint.strokeWidth = 4f; paint.style = Paint.Style.STROKE
-                canvas.drawLine(-28f, -72f, -14f, -66f, paint); canvas.drawLine(28f, -72f, 14f, -66f, paint)
-                paint.style = Paint.Style.FILL
-                canvas.drawCircle(-16f, -62f, 5f, paint); canvas.drawCircle(16f, -62f, 5f, paint)
+            "CONTENT","LAUGHING" -> {
+                ps.color = C_EYE; ps.strokeWidth = 3f
+                path.reset(); path.moveTo(-ex - 6f, ey); path.quadTo(-ex, ey + 4f, -ex + 6f, ey); c.drawPath(path, ps)
+                path.reset(); path.moveTo(ex - 6f, ey); path.quadTo(ex, ey + 4f, ex + 6f, ey); c.drawPath(path, ps)
             }
-            Expression.SURPRISED -> {
-                canvas.drawCircle(-16f, -63f, 8f, paint); canvas.drawCircle(16f, -63f, 8f, paint)
-                paint.color = Color.WHITE
-                canvas.drawCircle(-14f, -65f, 3f, paint); canvas.drawCircle(18f, -65f, 3f, paint)
-                paint.color = Color.parseColor("#2C2C2C")
+            "DIZZY" -> {
+                ps.color = C_EYE; ps.strokeWidth = 2f
+                c.drawCircle(-ex, ey, 7f, ps); c.drawArc(-ex - 7f, ey - 7f, -ex + 7f, ey + 7f, 0f, 360f, false, ps)
+                c.drawCircle(ex, ey, 7f, ps); c.drawArc(ex - 7f, ey - 7f, ex + 7f, ey + 7f, 0f, 360f, false, ps)
             }
-            Expression.SLEEPY -> {
-                paint.strokeWidth = 3f; paint.style = Paint.Style.STROKE
-                canvas.drawLine(-20f, -63f, -8f, -63f, paint); canvas.drawLine(8f, -63f, 20f, -63f, paint)
-                paint.style = Paint.Style.FILL
-            }
-            Expression.DIZZY -> {
-                paint.strokeWidth = 2f; paint.style = Paint.Style.STROKE
-                canvas.drawCircle(-16f, -63f, 7f, paint); canvas.drawArc(-23f, -70f, -9f, -56f, 0f, 360f, false, paint)
-                canvas.drawCircle(16f, -63f, 7f, paint); canvas.drawArc(9f, -70f, 23f, -56f, 0f, 360f, false, paint)
-                paint.style = Paint.Style.FILL
-            }
-            Expression.INNOCENT -> {
-                canvas.drawCircle(-16f, -64f, 8f, paint); canvas.drawCircle(16f, -64f, 8f, paint)
-                paint.color = Color.WHITE
-                canvas.drawCircle(-14f, -66f, 4f, paint); canvas.drawCircle(18f, -66f, 4f, paint)
-                paint.color = Color.parseColor("#2C2C2C")
-            }
-            Expression.CONTENT, Expression.LAUGHING -> {
-                paint.strokeWidth = 3f; paint.style = Paint.Style.STROKE
-                path.reset(); path.moveTo(-22f, -63f); path.quadTo(-16f, -59f, -10f, -63f); canvas.drawPath(path, paint)
-                path.reset(); path.moveTo(10f, -63f); path.quadTo(16f, -59f, 22f, -63f); canvas.drawPath(path, paint)
-                paint.style = Paint.Style.FILL
+            else -> {  // HAPPY, IDLE 等默认圆眼
+                c.drawCircle(-ex, ey, 6f, p); c.drawCircle(ex, ey, 6f, p)
+                p.color = Color.WHITE; c.drawCircle(-ex + 2f, ey - 2f, 2.5f, p); c.drawCircle(ex + 2f, ey - 2f, 2.5f, p)
+                p.color = C_EYE
             }
         }
 
-        // 眼睛高光
-        if (expression != Expression.HAPPY && expression != Expression.SLEEPY &&
-            expression != Expression.CONTENT && expression != Expression.LAUGHING) {
-            paint.color = Color.WHITE
-            canvas.drawCircle(-14f, -65f, 2.5f, paint); canvas.drawCircle(18f, -65f, 2.5f, paint)
-        }
+        // 鼻子
+        p.color = C_NOSE; c.drawOval(-5f, -50f, 5f, -45f, p)
 
-        // ---- 鼻子 ----
-        paint.color = Color.parseColor("#FF8FAB"); paint.style = Paint.Style.FILL
-        canvas.drawOval(-5f, -52f, 5f, -46f, paint)
-
-        // ---- 嘴巴 ----
-        paint.color = Color.parseColor("#D4596B"); paint.strokeWidth = 2.5f; paint.style = Paint.Style.STROKE
+        // 嘴巴
+        ps.color = C_MOUTH; ps.strokeWidth = 2.5f; ps.style = Paint.Style.STROKE
         when (expression) {
-            Expression.HAPPY, Expression.LAUGHING, Expression.CONTENT -> {
-                path.reset(); path.moveTo(-12f, -42f); path.quadTo(0f, -36f, 12f, -42f); canvas.drawPath(path, paint)
-                if (expression == Expression.LAUGHING) {
-                    paint.style = Paint.Style.FILL; paint.color = Color.parseColor("#D4596B")
-                    canvas.drawOval(-6f, -40f, 6f, -32f, paint)
-                    paint.color = Color.parseColor("#FF8FAB"); canvas.drawOval(-4f, -38f, 4f, -34f, paint)
-                }
+            "HAPPY","CONTENT","LAUGHING" -> {
+                path.reset(); path.moveTo(-10f, -40f); path.quadTo(0f, -34f, 10f, -40f); c.drawPath(path, ps)
             }
-            Expression.SAD -> { path.reset(); path.moveTo(-12f, -40f); path.quadTo(0f, -46f, 12f, -40f); canvas.drawPath(path, paint) }
-            Expression.ANGRY -> {
-                path.reset(); path.moveTo(-12f, -42f); path.lineTo(-6f, -44f); path.lineTo(0f, -42f)
-                path.lineTo(6f, -44f); path.lineTo(12f, -42f); canvas.drawPath(path, paint)
+            "SURPRISED" -> {
+                ps.style = Paint.Style.FILL; p.color = C_MOUTH; c.drawOval(-5f, -38f, 5f, -28f, p)
+                p.color = C_NOSE; c.drawOval(-3f, -36f, 3f, -30f, p)
             }
-            Expression.SURPRISED -> {
-                paint.style = Paint.Style.FILL; paint.color = Color.parseColor("#D4596B")
-                canvas.drawOval(-5f, -40f, 5f, -30f, paint)
-                paint.color = Color.parseColor("#FF8FAB"); canvas.drawOval(-3f, -38f, 3f, -32f, paint)
+            "DIZZY" -> {
+                path.reset(); path.moveTo(-10f, -38f); path.quadTo(-5f, -42f, 0f, -38f)
+                path.quadTo(5f, -34f, 10f, -38f); c.drawPath(path, ps)
             }
-            Expression.DIZZY -> { path.reset(); path.moveTo(-12f, -40f); path.quadTo(-6f, -44f, 0f, -40f); path.quadTo(6f, -36f, 12f, -40f); canvas.drawPath(path, paint) }
-            Expression.INNOCENT -> { canvas.drawCircle(0f, -40f, 3f, paint) }
-            Expression.SLEEPY -> { canvas.drawArc(-3f, -42f, 3f, -38f, 0f, -180f, false, paint) }
+            else -> {
+                path.reset(); path.moveTo(-10f, -40f); path.quadTo(0f, -36f, 10f, -40f); c.drawPath(path, ps)
+            }
         }
-        paint.style = Paint.Style.FILL
+        ps.style = Paint.Style.FILL
 
-        // ---- 腮红 ----
-        val blushAlpha = if (showBlushBoost) 120 else 60
-        paint.color = Color.argb(blushAlpha, 255, 181, 200)
-        canvas.drawCircle(-26f, -46f, 12f, paint); canvas.drawCircle(26f, -46f, 12f, paint)
-        paint.alpha = 255
+        // 腮红
+        val ba = min(255, (if (fxBlush > 0) 140 else 70))
+        p.color = Color.argb(ba, 255, 181, 200)
+        c.drawCircle(-26f, -46f, 10f, p); c.drawCircle(26f, -46f, 10f, p)
     }
 
-    /** 前腿 */
-    private fun drawFrontLegs(canvas: Canvas) {
-        paint.color = Color.parseColor("#FFDBB8")
-        val lOff = sin(legPhase + PI.toFloat()) * 6f
-        val rOff = sin(legPhase) * 6f
-        canvas.save(); canvas.rotate(lOff * 0.3f, -30f, 40f)
-        canvas.drawRoundRect(-37f, 40f, -23f, 72f, 6f, 6f, paint)
-        canvas.restore()
-        canvas.save(); canvas.rotate(rOff * 0.3f, 30f, 40f)
-        canvas.drawRoundRect(23f, 40f, 37f, 72f, 6f, 6f, paint)
-        canvas.restore()
-        paint.color = Color.parseColor("#D4A88C")
-        canvas.drawRoundRect(-37f, 64f, -23f, 72f, 4f, 4f, paint)
-        canvas.drawRoundRect(23f, 64f, 37f, 72f, 4f, 4f, paint)
+    // ---- 尾巴 ----
+    private fun drawTail(c: Canvas) {
+        p.color = C_WOOL
+        val wag = if (expression == "HAPPY" || expression == "LAUGHING") sin(animTime * 7f) * 5f else 0f
+        c.save(); c.rotate(wag, 72f, 8f)
+        c.drawCircle(74f, 10f, 14f, p)
+        p.color = C_WOOL_LIGHT
+        c.drawCircle(76f, 6f, 9f, p); c.drawCircle(72f, 14f, 9f, p)
+        c.restore()
     }
 
-    /** 后腿 */
-    private fun drawBackLegs(canvas: Canvas) {
-        paint.color = Color.parseColor("#FFDBB8")
-        val lOff = sin(legPhase) * 6f
-        val rOff = sin(legPhase + PI.toFloat()) * 6f
-        canvas.save(); canvas.rotate(-lOff * 0.3f, -35f, 35f)
-        canvas.drawRoundRect(-42f, 38f, -28f, 68f, 6f, 6f, paint)
-        canvas.restore()
-        canvas.save(); canvas.rotate(-rOff * 0.3f, 35f, 35f)
-        canvas.drawRoundRect(28f, 38f, 42f, 68f, 6f, 6f, paint)
-        canvas.restore()
-        paint.color = Color.parseColor("#D4A88C")
-        canvas.drawRoundRect(-42f, 60f, -28f, 68f, 4f, 4f, paint)
-        canvas.drawRoundRect(28f, 60f, 42f, 68f, 4f, 4f, paint)
-    }
-
-    /** 尾巴 */
-    private fun drawTail(canvas: Canvas) {
-        paint.color = Color.parseColor("#FFF0E8")
-        val wag = if (expression == Expression.HAPPY || expression == Expression.LAUGHING) sin(animTime * 8f) * 6f else 0f
-        canvas.save(); canvas.rotate(wag, 72f, 10f)
-        canvas.drawCircle(72f, 12f, 16f, paint)
-        paint.color = Color.parseColor("#FFF5EE")
-        canvas.drawCircle(74f, 8f, 10f, paint); canvas.drawCircle(70f, 16f, 10f, paint)
-        canvas.restore()
-    }
-
-    // ==================== 特效绘制 ====================
-
-    private fun drawEffects(canvas: Canvas) {
-        if (showHearts) {
-            paint.color = Color.parseColor("#FF69B4"); paint.textSize = 28f
-            for (i in 0 until 3) canvas.drawText("♥", -20f + i * 20f, -100f - 15f * i + sin(animTime * 4f + i) * 5f, paint)
+    // ---- 特效 ----
+    private fun drawFX(c: Canvas) {
+        p.textAlign = Paint.Align.CENTER
+        if (fxHearts > 0) {
+            p.color = 0xFFFF69B4.toInt(); p.textSize = 26f
+            for (i in 0 until 3) c.drawText("♥", (-15 + i * 15).toFloat(), -105f - 12f * i + sin(animTime * 4f + i) * 4f, p)
         }
-        if (showStars) {
-            paint.color = Color.parseColor("#FFD700"); paint.textSize = 24f
-            for (i in 0 until 4) canvas.drawText("✦", -30f + i * 20f, -110f + sin(animTime * 3f + i * 2f) * 8f, paint)
+        if (fxStars > 0) {
+            p.color = 0xFFFFD700.toInt(); p.textSize = 22f
+            for (i in 0 until 4) c.drawText("✦", (-24 + i * 16).toFloat(), -115f + sin(animTime * 3f + i * 2f) * 6f, p)
         }
-        if (showZzz) {
-            paint.color = Color.parseColor("#90CAF9"); paint.textSize = 22f
-            for (i in 0 until 3) canvas.drawText("z", 50f, -90f - i * 20f + sin(animTime * 2f + i) * 3f, paint)
+        if (fxExclaim > 0) {
+            p.color = 0xFFFF4444.toInt(); p.textSize = 30f
+            c.drawText("!", 0f, -105f + sin(animTime * 5f) * 3f, p)
         }
-        if (showExclamation) {
-            paint.color = Color.parseColor("#FF4444"); paint.textSize = 32f
-            canvas.drawText("!", -5f, -100f + sin(animTime * 5f) * 3f, paint)
-        }
-        if (showNote) {
-            paint.color = Color.parseColor("#9C27B0"); paint.textSize = 24f
-            canvas.drawText("♪", 50f, -80f + sin(animTime * 6f) * 4f, paint)
-            canvas.drawText("♫", 60f, -70f + cos(animTime * 5f) * 3f, paint)
+        if (fxNote > 0) {
+            p.color = 0xFF9C27B0.toInt(); p.textSize = 22f
+            c.drawText("♪", 55f, -85f + sin(animTime * 5f) * 4f, p)
+            c.drawText("♫", 65f, -75f + cos(animTime * 4f) * 3f, p)
         }
         if (isClimbing) {
-            paint.color = Color.argb(60, 200, 200, 200); paint.strokeWidth = 2f; paint.style = Paint.Style.STROKE
-            for (i in 0..3) {
-                val yOff = -30f + i * 25f
-                canvas.drawLine(-75f, yOff, -65f + sin(legPhase * 2f + i) * 5f, yOff, paint)
-                canvas.drawLine(65f + sin(legPhase * 2f + i + 2f) * 5f, yOff, 75f, yOff, paint)
+            ps.color = Color.argb(80, 180, 180, 180); ps.strokeWidth = 2f
+            for (i in 0..3) { val y = -25f + i * 24f
+                c.drawLine(-78f, y, -68f + sin(legPhase * 2f + i) * 5f, y, ps)
+                c.drawLine(68f + sin(legPhase * 2f + i + 2f) * 5f, y, 78f, y, ps)
             }
-            paint.style = Paint.Style.FILL
         }
     }
-
-    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 }
-
