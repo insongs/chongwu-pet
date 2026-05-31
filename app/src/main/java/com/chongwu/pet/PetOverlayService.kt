@@ -11,6 +11,9 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 
+/**
+ * 全屏悬浮窗服务 - 小羊在整屏自由活动
+ */
 class PetOverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
@@ -18,177 +21,87 @@ class PetOverlayService : Service() {
     private lateinit var sheepView: SheepView
     private var layoutParams: WindowManager.LayoutParams? = null
 
-    private val screenWidth: Int get() {
-        val point = Point()
-        windowManager.defaultDisplay.getRealSize(point)
-        return point.x
-    }
-    private val screenHeight: Int get() {
-        val point = Point()
-        windowManager.defaultDisplay.getRealSize(point)
-        return point.y
-    }
-
-    private val overlaySize = 280
-
     companion object {
-        const val NOTIFICATION_ID = 1001
-        const val CHANNEL_ID = "chongwu_overlay"
+        const val NOTIFICATION_ID = 1001; const val CHANNEL_ID = "chongwu_overlay"
         const val ACTION_STOP = "com.chongwu.pet.STOP"
     }
 
-    override fun onCreate() {
-        super.onCreate()
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        createNotificationChannel()
-    }
+    override fun onCreate() { super.onCreate(); windowManager = getSystemService(WINDOW_SERVICE) as WindowManager; createNotificationChannel() }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         if (overlayView == null) showOverlay()
         startForeground(NOTIFICATION_ID, createNotification())
         return START_STICKY_COMPATIBILITY
     }
 
     override fun onBind(intent: Intent?) = null
-
     override fun onDestroy() { removeOverlay(); super.onDestroy() }
 
     private fun showOverlay() {
-        val density = resources.displayMetrics.density
-        val sizePx = (overlaySize * density).toInt()
-
         val frame = FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            isClickable = true
-            isFocusable = false
+            isClickable = true; isFocusable = false
         }
 
         sheepView = SheepView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(sizePx, sizePx)
-            onDragStart = { isDragging = false; isEdgeClimbing = false }
+            layoutParams = FrameLayout.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT
+            )
+            onDragStart = { isDragging = false }
             onDragMove = { dx, dy -> handleDragDelta(dx, dy) }
             onDragEnd = { finishDrag() }
         }
         frame.addView(sheepView)
 
         layoutParams = WindowManager.LayoutParams(
-            sizePx, sizePx,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = (screenWidth - sizePx) / 2
-            y = (screenHeight - sizePx) / 3
-        }
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = 0; y = 0 }
 
         overlayView = frame
-        try { windowManager.addView(frame, layoutParams) }
-        catch (_: Exception) { stopSelf() }
+        try { windowManager.addView(frame, layoutParams) } catch (_: Exception) { stopSelf() }
     }
 
-    private fun removeOverlay() {
-        overlayView?.let {
-            try { windowManager.removeView(it) } catch (_: Exception) {}
-        }
-        overlayView = null
-    }
+    private fun removeOverlay() { overlayView?.let { try { windowManager.removeView(it) } catch(_:Exception){} }; overlayView = null }
 
-    // ==================== 拖拽 & 攀爬 ====================
+    // ===== 拖拽 =====
     private var isDragging = false
-    private var isEdgeClimbing = false
-    private var lastDeltaX = 0f
-    private var lastDeltaY = 0f
+    private var startX = 0; private var startY = 0
+    private var lastDeltaX = 0f; private var lastDeltaY = 0f
 
     private fun handleDragDelta(dx: Float, dy: Float) {
         val params = layoutParams ?: return
-        val dist = kotlin.math.abs(dx.toInt()) + kotlin.math.abs(dy.toInt())
-        if (dist > 15) isDragging = true
-
-        if (!isEdgeClimbing) {
-            params.x = (params.x + (dx - lastDeltaX).toInt())
-                .coerceIn(-overlaySize / 3, screenWidth - overlaySize / 3)
-            params.y = (params.y + (dy - lastDeltaY).toInt())
-                .coerceIn(-overlaySize / 3, screenHeight - overlaySize / 3)
-
-            val threshold = 80
-            val nearEdge = params.x < threshold || params.x > screenWidth - overlaySize - threshold ||
-                    params.y < threshold || params.y > screenHeight - overlaySize - threshold
-            if (nearEdge && dist > 30) {
-                isEdgeClimbing = true
-                sheepView.isClimbing = true
-            }
-        } else {
-            climbAlongEdge(params, (dx - lastDeltaX).toInt(), (dy - lastDeltaY).toInt())
-        }
-
+        if (!isDragging) { isDragging = true; startX = params.x; startY = params.y }
+        params.x = startX + (dx - lastDeltaX).toInt()
+        params.y = startY + (dy - lastDeltaY).toInt()
         lastDeltaX = dx; lastDeltaY = dy
-        try { overlayView?.let { windowManager.updateViewLayout(it, params) } }
-        catch (_: Exception) {}
+        try { overlayView?.let { windowManager.updateViewLayout(it, params) } } catch(_:Exception){}
     }
 
-    private fun climbAlongEdge(params: WindowManager.LayoutParams, dx: Int, dy: Int) {
-        val edgeThreshold = 80
-        when {
-            params.y < edgeThreshold -> params.x += dx
-            params.y > screenHeight - overlaySize - edgeThreshold -> params.x += dx
-            else -> params.y += dy
-        }
-        params.x = params.x.coerceIn(-overlaySize / 2, screenWidth - overlaySize / 2)
-        params.y = params.y.coerceIn(-overlaySize / 2, screenHeight - overlaySize / 2)
-    }
+    private fun finishDrag() { isDragging = false; lastDeltaX=0f; lastDeltaY=0f }
 
-    private fun finishDrag() {
-        if (isEdgeClimbing) {
-            sheepView.isClimbing = false
-            isEdgeClimbing = false
-        }
-        if (isDragging) snapToEdge()
-        isDragging = false
-        lastDeltaX = 0f; lastDeltaY = 0f
-    }
-
-    private fun snapToEdge() {
-        val params = layoutParams ?: return
-        val threshold = 120
-        if (params.y < threshold) params.y = 0
-        else if (params.y > screenHeight - overlaySize - threshold) params.y = screenHeight - overlaySize
-        if (params.x < threshold) params.x = 0
-        else if (params.x > screenWidth - overlaySize - threshold) params.x = screenWidth - overlaySize
-        try { overlayView?.let { windowManager.updateViewLayout(it, params) } }
-        catch (_: Exception) {}
-    }
-
-    // ==================== 通知 ====================
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, getString(R.string.overlay_channel_name),
-                NotificationManager.IMPORTANCE_LOW
-            ).apply { description = getString(R.string.overlay_channel_desc); setShowBadge(false) }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val ch = NotificationChannel(CHANNEL_ID, getString(R.string.overlay_channel_name), NotificationManager.IMPORTANCE_LOW)
+            ch.description = getString(R.string.overlay_channel_desc); ch.setShowBadge(false)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
         }
     }
 
     private fun createNotification(): Notification {
         val stopIntent = Intent(this, PetOverlayService::class.java).apply { action = ACTION_STOP }
-        val stopPendingIntent = PendingIntent.getService(
-            this, 0, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.overlay_notification_text))
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "关闭", stopPendingIntent)
-            .build()
+        val stopPi = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.overlay_notification_text)).setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setPriority(NotificationCompat.PRIORITY_LOW).setOngoing(true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "关闭", stopPi).build()
     }
 }

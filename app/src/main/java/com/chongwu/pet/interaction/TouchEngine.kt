@@ -1,10 +1,10 @@
-ï»¿package com.chongwu.pet.interaction
+package com.chongwu.pet.interaction
 
 import android.view.MotionEvent
 import kotlin.math.*
 
 /**
- * è§¦æ‘¸å¼•æ“Ž - æ‰‹åŠ¿è¯†åˆ« + èº«ä½“éƒ¨ä½æ£€æµ‹
+ * ´¥ÃþÒýÇæ - ÊÖÊÆÊ¶±ð + ÉíÌå²¿Î»¼ì²â
  */
 class TouchEngine {
 
@@ -31,7 +31,7 @@ class TouchEngine {
     private var isDragging = false
     private var pointerCount = 0
 
-    // æ‹–æ‹½å›žè°ƒ
+    // ÍÏ×§»Øµ÷
     var onDragStart: (() -> Unit)? = null
     var onDragMove: ((Float, Float) -> Unit)? = null
     var onDragEnd: (() -> Unit)? = null
@@ -93,7 +93,7 @@ class TouchEngine {
         return null
     }
 
-    private fun detectBodyPart(x: Float, y: Float, vw: Float, vh: Float): BodyPart {
+    fun detectBodyPart(x: Float, y: Float, vw: Float, vh: Float): BodyPart {
         val cx = vw / 2f
         val cy = vh / 2f
         val s = min(vw.coerceAtLeast(1f), vh.coerceAtLeast(1f)) / 300f
