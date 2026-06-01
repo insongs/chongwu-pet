@@ -82,10 +82,10 @@ object PrimitiveBuilder {
         // 侧面
         for (i in 0..sectors) {
             val angle = (2 * PI * i / sectors).toFloat()
-            val x = cos(angle) * radius
-            val z = sin(angle) * radius
-            val nx = cos(angle)
-            val nz = sin(angle)
+            val x = cos(angle).toFloat() * radius
+            val z = sin(angle).toFloat() * radius
+            val nx = cos(angle).toFloat()
+            val nz = sin(angle).toFloat()
             verts.addAll(listOf(x, -hh, z)); norms.addAll(listOf(nx, 0f, nz))
             verts.addAll(listOf(x, hh, z)); norms.addAll(listOf(nx, 0f, nz))
         }
@@ -102,7 +102,7 @@ object PrimitiveBuilder {
             verts.addAll(listOf(0f, -hh, 0f)); norms.addAll(listOf(0f, -1f, 0f))
             for (i in 0 until sectors) {
                 val angle = (2 * PI * i / sectors).toFloat()
-                verts.addAll(listOf(cos(angle) * radius, -hh, sin(angle) * radius))
+                verts.addAll(listOf(cos(angle).toFloat() * radius, -hh, sin(angle).toFloat() * radius))
                 norms.addAll(listOf(0f, -1f, 0f))
             }
             for (i in 0 until sectors) {
@@ -117,7 +117,7 @@ object PrimitiveBuilder {
             verts.addAll(listOf(0f, hh, 0f)); norms.addAll(listOf(0f, 1f, 0f))
             for (i in 0 until sectors) {
                 val angle = (2 * PI * i / sectors).toFloat()
-                verts.addAll(listOf(cos(angle) * radius, hh, sin(angle) * radius))
+                verts.addAll(listOf(cos(angle).toFloat() * radius, hh, sin(angle).toFloat() * radius))
                 norms.addAll(listOf(0f, 1f, 0f))
             }
             for (i in 0 until sectors) {
@@ -148,7 +148,7 @@ object PrimitiveBuilder {
         verts.addAll(listOf(0f, -hh, 0f)); norms.addAll(listOf(0f, -1f, 0f))
         for (i in 0 until sectors) {
             val angle = (2 * PI * i / sectors).toFloat()
-            verts.addAll(listOf(cos(angle) * radius, -hh, sin(angle) * radius))
+            verts.addAll(listOf(cos(angle).toFloat() * radius, -hh, sin(angle).toFloat() * radius))
             norms.addAll(listOf(0f, -1f, 0f))
         }
         for (i in 0 until sectors) {
@@ -161,7 +161,7 @@ object PrimitiveBuilder {
         val sideBase = verts.size / 3
         for (i in 0 until sectors) {
             val angle = (2 * PI * i / sectors).toFloat()
-            val x = cos(angle) * radius; val z = sin(angle) * radius
+            val x = cos(angle).toFloat() * radius; val z = sin(angle).toFloat() * radius
             verts.addAll(listOf(x, -hh, z))
             val nx = x / radius; val ny = radius / height; val nz = z / radius
             val len = sqrt(nx * nx + ny * ny + nz * nz)
@@ -190,11 +190,11 @@ object PrimitiveBuilder {
             val u = (2 * PI * i / majorSeg).toFloat()
             for (j in 0..minorSeg) {
                 val v = (2 * PI * j / minorSeg).toFloat()
-                val x = (majorRadius + minorRadius * cos(v)) * cos(u)
-                val y = minorRadius * sin(v)
-                val z = (majorRadius + minorRadius * cos(v)) * sin(u)
+                val x = (majorRadius + minorRadius * cos(v).toFloat()) * cos(u).toFloat()
+                val y = minorRadius * sin(v).toFloat()
+                val z = (majorRadius + minorRadius * cos(v).toFloat()) * sin(u).toFloat()
                 verts.addAll(listOf(x, y, z))
-                norms.addAll(listOf(cos(v) * cos(u), sin(v), cos(v) * sin(u)))
+                norms.addAll(listOf(cos(v).toFloat() * cos(u).toFloat(), sin(v).toFloat(), cos(v).toFloat() * sin(u).toFloat()))
             }
         }
         
@@ -230,7 +230,7 @@ object PrimitiveBuilder {
             val angle = t * curveAngle * PI / 180f
             val cx = sin(angle).toFloat() * length * 0.6f
             val cy = length * t - length * 0.3f
-            val cz = (1 - cos(angle)).toFloat() * length * 0.3f
+            val cz = (1 - cos(angle).toFloat()).toFloat() * length * 0.3f
             
             // 路径切线方向
             val tx = cos(angle).toFloat() * length * 0.6f * (curveAngle * PI / 180f) / length
