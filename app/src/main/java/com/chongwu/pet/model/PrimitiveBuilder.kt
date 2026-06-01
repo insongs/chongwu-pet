@@ -257,14 +257,14 @@ object PrimitiveBuilder {
                     right[0]*ty/tlen - right[1]*tx/tlen
                 )
                 
-                val px = cx + r * (cos(u) * right[0] + sin(u) * newUp[0])
-                val py = cy + r * (cos(u) * right[1] + sin(u) * newUp[1])
-                val pz = cz + r * (cos(u) * right[2] + sin(u) * newUp[2])
+                val px = cx + r * (cos(u).toFloat() * right[0] + sin(u).toFloat() * newUp[0])
+                val py = cy + r * (cos(u).toFloat() * right[1] + sin(u).toFloat() * newUp[1])
+                val pz = cz + r * (cos(u).toFloat() * right[2] + sin(u).toFloat() * newUp[2])
                 verts.addAll(listOf(px, py, pz))
                 
-                val nx = cos(u) * right[0] + sin(u) * newUp[0]
-                val ny = cos(u) * right[1] + sin(u) * newUp[1]
-                val nz = cos(u) * right[2] + sin(u) * newUp[2]
+                val nx = cos(u).toFloat() * right[0] + sin(u).toFloat() * newUp[0]
+                val ny = cos(u).toFloat() * right[1] + sin(u).toFloat() * newUp[1]
+                val nz = cos(u).toFloat() * right[2] + sin(u).toFloat() * newUp[2]
                 norms.addAll(listOf(nx, ny, nz))
             }
         }

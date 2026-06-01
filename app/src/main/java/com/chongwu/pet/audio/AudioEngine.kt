@@ -205,7 +205,6 @@ class AudioEngine(private val context: Context) {
             
             track.write(buffer, 0, buffer.size)
             track.setVolume(volume)
-            track.loopPoints = 0
             track.setLoopPoints(0, buffer.size / 2, -1)
             track.play()
             track

@@ -1,5 +1,8 @@
 ﻿package com.chongwu.pet.model
 
+import kotlin.math.cos
+import kotlin.math.sin
+
 /**
  * 3D摄像机 - 透视投影 + 轨道控制
  */

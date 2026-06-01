@@ -90,9 +90,9 @@ class PetRenderer {
         
         // 天空球罩（简化 - 用半圆）
         skyDome = PrimitiveBuilder.createSphere(5f, 16, 16)
-        skyDome.colorR = 0.6f; skyDome.colorG = 0.8f; skyDome.colorB = 1.0f
-        skyDome.colorA = 0.3f
-        skyDome.uploadToGPU()
+        skyDome!!.colorR = 0.6f; skyDome!!.colorG = 0.8f; skyDome!!.colorB = 1.0f
+        skyDome!!.colorA = 0.3f
+        skyDome!!.uploadToGPU()
         
         camera.fov = 40f
         camera.distance = camDistance
