@@ -11,12 +11,14 @@
         android:orientation="vertical"
         android:gravity="center_horizontal">
 
-        <!-- 小羊预览（静态） -->
-        <com.chongwu.pet.SheepView
+        <!-- 小羊预览（静态图标） -->
+        <View
             android:id="@+id/previewSheep"
             android:layout_width="200dp"
             android:layout_height="200dp"
-            android:layout_marginTop="16dp" />
+            android:layout_marginTop="16dp"
+            android:background="#E8F5E9"
+            android:alpha="0.9" />
 
         <!-- 状态文字 -->
         <TextView

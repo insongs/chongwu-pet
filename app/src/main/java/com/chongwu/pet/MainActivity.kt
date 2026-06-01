@@ -11,12 +11,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.chongwu.pet.audio.AudioEngine
 
 /**
- * 主入口 Activity
- *
- * 引导用户授予悬浮窗权限 → 启动 PetOverlayService。
- * 后续可扩展为设置界面（调节大小、切换宠物等）。
+ * 主入口 Activity - 3D花影羚羊宠物桌面
  */
 class MainActivity : AppCompatActivity() {
 
@@ -28,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var actionBtn: Button
     private lateinit var hintText: TextView
     private var isRunning = false
+    private var audioEngine: AudioEngine? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,17 +44,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 引导页帮助文字
+        // 初始化音效引擎
+        audioEngine = AudioEngine(this)
+        audioEngine?.init()
+
         hintText.text = """
-            🌟 欢迎来到咩咩宠物世界！
+            🌟 花影羚羊 · 3D桌面宠物
             
-            咩咩是一只可爱的桌面小羊，它会：
-            • 在屏幕上游走玩耍 🐑
-            • 触摸不同部位有不同的反应 ✨
-            • 在屏幕边缘攀爬 🧗
-            • 等你来发现更多彩蛋！
+            一只立体的花影小羚羊，它会：
+            • 🐏 在屏幕上自由漫步、吃草、蹦跳
+            • 🌸 身带花瓣纹样，随季节变化
+            • ☀️ 昼夜交替、天气变化影响行为
+            • 👆 触摸不同部位有不同的反应
+            • 🦋 蝴蝶飞舞、草地生长的小生态
             
-            点击下方按钮，释放咩咩吧！
+            点击下方按钮，让小羚羊来到你的桌面吧！
         """.trimIndent()
     }
 
@@ -74,23 +77,21 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus() {
         isRunning = isServiceRunning(PetOverlayService::class.java)
         if (isRunning) {
-            statusText.text = "🐑 咩咩正在屏幕上游玩~"
+            statusText.text = "🦋 花影羚羊正在屏幕上游玩~"
             actionBtn.text = getString(R.string.stop_service)
-            hintText.text = "咩咩正在后台陪伴你！\n拖拽它到屏幕边缘，它就会攀爬起来~"
+            hintText.text = "小羚羊正在后台陪伴你！\n触摸它的不同部位，看看有什么反应~"
         } else {
-            statusText.text = "😴 咩咩在睡觉..."
+            statusText.text = "🌙 花影羚羊在休息..."
             actionBtn.text = getString(R.string.start_service)
         }
     }
 
     private fun startPet() {
-        // 检查悬浮窗权限
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             showPermissionDialog()
             return
         }
 
-        // 请求忽略电池优化（防止后台被杀）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -111,17 +112,16 @@ class MainActivity : AppCompatActivity() {
         }
         isRunning = true
         updateStatus()
-        Toast.makeText(this, "咩咩来了！🐑", Toast.LENGTH_SHORT).show()
+        audioEngine?.playHappy()
+        Toast.makeText(this, "花影羚羊来了！🦋", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopPet() {
         stopService(Intent(this, PetOverlayService::class.java))
         isRunning = false
         updateStatus()
-        Toast.makeText(this, "咩咩去睡觉了~", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "花影羚羊去休息了~", Toast.LENGTH_SHORT).show()
     }
-
-    // ==================== 权限引导对话框 ====================
 
     private fun showPermissionDialog() {
         AlertDialog.Builder(this)
@@ -130,7 +130,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("去授权") { _, _ ->
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:")
+                    Uri.parse("package:$packageName")
                 )
                 startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST)
             }
@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
     private fun showBatteryOptimizationDialog() {
         AlertDialog.Builder(this)
             .setTitle("建议关闭电池优化")
-            .setMessage("为了咩咩能在后台一直陪伴你，建议关闭电池优化。\n（不同手机设置位置不同）")
+            .setMessage("为了让小羚羊能在后台一直陪伴你，建议关闭电池优化。")
             .setPositiveButton("去设置") { _, _ ->
                 val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                 startActivity(intent)
@@ -156,5 +156,10 @@ class MainActivity : AppCompatActivity() {
             if (serviceClass.name == service.service.className) return true
         }
         return false
+    }
+
+    override fun onDestroy() {
+        audioEngine?.release()
+        super.onDestroy()
     }
 }

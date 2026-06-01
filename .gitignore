@@ -22,4 +22,9 @@ app/build/
 # Node (just in case)
 node_modules/
 .npm-cache/
-server.js
+
+# Dev/temp files
+device_auth.json
+fix-guide.html
+push-fix.js
+tree_item.json

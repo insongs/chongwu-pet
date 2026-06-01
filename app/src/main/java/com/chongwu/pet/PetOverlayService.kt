@@ -12,13 +12,13 @@ import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 
 /**
- * 全屏悬浮窗服务 - 小羊在整屏自由活动
+ * 全屏悬浮窗服务 - 3D宠物在整屏活动
  */
 class PetOverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
     private var overlayView: FrameLayout? = null
-    private lateinit var sheepView: SheepView
+    private lateinit var glSheepView: GLSheepView
     private var layoutParams: WindowManager.LayoutParams? = null
 
     companion object {
@@ -36,7 +36,10 @@ class PetOverlayService : Service() {
     }
 
     override fun onBind(intent: Intent?) = null
-    override fun onDestroy() { removeOverlay(); super.onDestroy() }
+    override fun onDestroy() { 
+        if (::glSheepView.isInitialized) glSheepView.cleanup()
+        removeOverlay(); super.onDestroy() 
+    }
 
     private fun showOverlay() {
         val frame = FrameLayout(this).apply {
@@ -44,7 +47,7 @@ class PetOverlayService : Service() {
             isClickable = true; isFocusable = false
         }
 
-        sheepView = SheepView(this).apply {
+        glSheepView = GLSheepView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT
@@ -53,7 +56,7 @@ class PetOverlayService : Service() {
             onDragMove = { dx, dy -> handleDragDelta(dx, dy) }
             onDragEnd = { finishDrag() }
         }
-        frame.addView(sheepView)
+        frame.addView(glSheepView)
 
         layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -64,7 +67,7 @@ class PetOverlayService : Service() {
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.TOP or Gravity.START; x = 0; y = 0 }
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = 0; y = 0; width = WindowManager.LayoutParams.MATCH_PARENT; height = WindowManager.LayoutParams.MATCH_PARENT }
 
         overlayView = frame
         try { windowManager.addView(frame, layoutParams) } catch (_: Exception) { stopSelf() }
