@@ -55,23 +55,23 @@ let anim=0,animTime=0;
 // 身体球体
 function drawBody(px,py,pz,r,color1,color2,sf){
     const grad=ctx.createRadialGradient(
-        px-sf*0.2*r, py-sf*0.3*r, 0, px, py, r*2.2);
+        px-sf*0.2*r, py-sf*0.3*r, 0, px, py, sf*r*2.2);
     grad.addColorStop(0,`rgba(${color1[0]+80},${color1[1]+80},${color1[2]+80},1)`);
     grad.addColorStop(0.3,`rgba(${color1[0]},${color1[1]},${color1[2]},0.95)`);
     grad.addColorStop(0.7,`rgba(${color2[0]},${color2[1]},${color2[2]},0.7)`);
     grad.addColorStop(1,`rgba(${color2[0]-40},${color2[1]-40},${color2[2]-40},0.2)`);
     ctx.fillStyle=grad;
-    ctx.beginPath();ctx.ellipse(px,py,r*2.2,r*2,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(px,py,sf*r*2.2,sf*r*2,0,0,Math.PI*2);ctx.fill();
 }
 
 // 发光外圈
 function drawGlow(px,py,r,color,sf){
-    const grad=ctx.createRadialGradient(px,py,0,px,py,r*3);
+    const grad=ctx.createRadialGradient(px,py,0,px,py,sf*r*4);
     grad.addColorStop(0,`rgba(${color[0]},${color[1]},${color[2]},0.15)`);
     grad.addColorStop(0.5,`rgba(${color[0]},${color[1]},${color[2]},0.05)`);
     grad.addColorStop(1,`rgba(${color[0]},${color[1]},${color[2]},0)`);
     ctx.fillStyle=grad;
-    ctx.beginPath();ctx.arc(px,py,r*4,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(px,py,sf*r*4,0,Math.PI*2);ctx.fill();
 }
 
 // 眼睛
