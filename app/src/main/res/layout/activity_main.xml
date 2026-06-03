@@ -2,8 +2,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="24dp"
-    android:background="#FFF8F0">
+    android:padding="20dp"
+    android:background="#0D1117">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -11,51 +11,79 @@
         android:orientation="vertical"
         android:gravity="center_horizontal">
 
-        <!-- 小羊预览（静态图标） -->
-        <View
-            android:id="@+id/previewSheep"
-            android:layout_width="200dp"
-            android:layout_height="200dp"
-            android:layout_marginTop="16dp"
-            android:background="#E8F5E9"
-            android:alpha="0.9" />
-
-        <!-- 状态文字 -->
+        <!-- 标题 -->
         <TextView
-            android:id="@+id/statusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="😴 咩咩在睡觉..."
-            android:textSize="20sp"
-            android:textColor="#5D4037" />
+            android:layout_marginTop="40dp"
+            android:text="🦋 花影羚羊"
+            android:textSize="28sp"
+            android:textColor="#E0E0E0"
+            android:textStyle="bold" />
 
-        <!-- 开始/停止按钮 -->
+        <!-- 副标题 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="3D 桌面宠物"
+            android:textSize="16sp"
+            android:textColor="#78909C"
+            android:gravity="center" />
+
+        <!-- 状态 -->
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:padding="16dp"
+            android:text="🌙 花影羚羊在休息..."
+            android:textSize="18sp"
+            android:textColor="#B0BEC5"
+            android:gravity="center"
+            android:background="#1A1F2E"
+            android:backgroundTint="#1A1F2E" />
+
+        <!-- 按钮 -->
         <Button
             android:id="@+id/actionBtn"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="20dp"
-            android:paddingHorizontal="40dp"
             android:text="@string/start_service"
-            android:textSize="16sp"
-            android:backgroundTint="#8BC34A"
+            android:textSize="17sp"
+            android:backgroundTint="#7C4DFF"
             android:textColor="#FFFFFF"
-            android:elevation="4dp"
-            android:stateListAnimator="@null" />
+            android:elevation="4dp" />
 
         <!-- 提示文字 -->
         <TextView
             android:id="@+id/hintText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:padding="16dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="40dp"
+            android:padding="20dp"
             android:textSize="14sp"
-            android:textColor="#795548"
+            android:textColor="#78909C"
+            android:gravity="center"
             android:lineSpacingExtra="6dp"
-            android:background="@drawable/hint_bg"
-            android:alpha="0.85" />
+            android:background="#1A1F2E"
+            android:alpha="0.9" />
+
+        <!-- 功能特性 -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:padding="16dp"
+            android:text="🐏 3D立体Q版造型\n🌸 花瓣纹样装饰\n🦋 生态模拟系统\n☀️ 昼夜交替/天气变化\n👆 多点触摸互动\n🌙 自主AI行为\n🎵 程序化音效"
+            android:textSize="13sp"
+            android:textColor="#546E7A"
+            android:lineSpacingExtra="4dp"
+            android:background="#111827"
+            android:alpha="0.8" />
 
     </LinearLayout>
 

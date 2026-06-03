@@ -16,7 +16,7 @@ class Camera {
     var far = 100f
     
     // 轨道角度
-    var theta = 0f   // 水平角度
+    var theta = 0f   // 水平角度（度）
     var phi = 30f    // 垂直角度（度）
     var distance = 6f
     
@@ -29,8 +29,8 @@ class Camera {
     val vpMatrix = FloatArray(16)
     
     fun updateOrbit() {
-        val radTheta = Math.toRadians(theta.toDouble()).toFloat()
-        val radPhi = Math.toRadians(phi.toDouble()).toFloat()
+        val radTheta = theta * kotlin.math.PI.toFloat() / 180f
+        val radPhi = phi * kotlin.math.PI.toFloat() / 180f
         
         eyeX = centerX + targetOffsetX + distance * cos(radPhi) * sin(radTheta)
         eyeY = centerY + targetOffsetY + distance * sin(radPhi)

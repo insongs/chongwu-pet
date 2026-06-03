@@ -1,77 +1,97 @@
-ï»¿package com.chongwu.pet.render.gl
+package com.chongwu.pet.render.gl
 
 import android.opengl.GLES20
 import android.opengl.Matrix
-import com.chongwu.pet.ai.SheepState
-import com.chongwu.pet.ecology.Environment
+import com.chongwu.pet.PetType
 import com.chongwu.pet.model.Camera
+import com.chongwu.pet.model.FishModel3D
 import com.chongwu.pet.model.Model3D
 import com.chongwu.pet.model.PrimitiveBuilder
 import com.chongwu.pet.model.SheepModel3D
+import com.chongwu.pet.scene.SheepEnvironment
 import kotlin.math.*
 
 /**
- * ä¸»OpenGLæ¸²æŸ“å™¨ - ç®¡ç†åœºæ™¯ç»˜åˆ¶
+ * Ö÷OpenGLäÖÈ¾Æ÷ - Ö§³ÖĞ¡ÑòºÍĞ¡Óã
  */
 class PetRenderer {
     
     private val shader = ShaderProgram()
     private var isReady = false
     
-    // åœºæ™¯å¯¹è±¡
+    // ³¡¾°¶ÔÏó
     private val camera = Camera()
-    private lateinit var sheepModel: SheepModel3D
+    private var currentPetType = PetType.SHEEP
+    private var sheepModel: SheepModel3D? = null
+    private var fishModel: FishModel3D? = null
     private var sheepRoot: Model3D? = null
+    private var fishRoot: Model3D? = null
+    private var activePet: Model3D? = null
+    
+    // ³èÎïÎ»ÖÃ
+    var petX = 0f
+    var petZ = 0f
+    var petScale = 1f
+    
+    // ¶¯»­×´Ì¬
+    private var animTime = 0f
+    private var sheepPose = SheepModel3D.Pose()
+    private var fishPose = FishModel3D.Pose()
+    
+    // ÌØĞ§
+    var fxHearts = 0f; var fxStars = 0f; var fxNotes = 0f
+    var fxBlush = 0f; var fxExclaim = 0f; var fxBubbles = 0f
+    
+    // Á£×ÓÏµÍ³
+    private val particles = mutableListOf<Particle>()
+    
+    // »·¾³
     private var ground: Model3D? = null
     private var skyDome: Model3D? = null
-    
-    // åŠ¨ç”»çŠ¶æ€
-    private val pose = SheepModel3D.Pose()
-    private var animTime = 0f
-    var sheepState: SheepState? = null
-    var environment: Environment? = null
-    
-    // æ‘„åƒæœºæ§åˆ¶
-    var camTheta = 30f
-    var camPhi = 25f
-    var camDistance = 5.5f
-    var camTargetOffset = 0f
-    
-    // ç‰¹æ•ˆå‚æ•°
-    var fxHearts = 0f; var fxStars = 0f; var fxNotes = 0f
-    var fxBlush = 0f; var fxExclaim = 0f
-    
-    // ç²’å­ç³»ç»Ÿ
-    private val particles = mutableListOf<Particle>()
-    private var particleTimer = 0f
-    
-    // ç¯å¢ƒæ¨¡å‹
     private val grassModels = mutableListOf<Model3D>()
     private val flowerModels = mutableListOf<Model3D>()
     private val butterflyModels = mutableListOf<Model3D>()
+    private val sheepEnv = SheepEnvironment()
     
-    // å…‰æ–¹å‘
+    // ¹âÕÕ
     private val lightDir = floatArrayOf(0.5f, 1.0f, 0.3f)
     private var ambient = 0.4f
+    private var timeOfDay = 6f
     
     data class Particle(
         var x: Float, var y: Float, var z: Float,
         var vx: Float, var vy: Float, var vz: Float,
         var life: Float, var maxLife: Float,
-        var r: Float, var g: Float, var b: Float,
-        var size: Float
+        var r: Float, var g: Float, var b: Float, var size: Float
     )
+    
+    fun switchPet(type: PetType) {
+        currentPetType = type
+        activePet = when (type) {
+            PetType.SHEEP -> sheepRoot
+            PetType.FISH -> fishRoot
+        }
+    }
     
     fun init(width: Float, height: Float) {
         shader.create()
         shader.use()
         
-        // æ„å»ºåœºæ™¯
-        sheepModel = SheepModel3D()
-        sheepRoot = sheepModel.build()
+        // ¹¹½¨Ğ¡Ñò
+        val sm = SheepModel3D()
+        sheepModel = sm
+        sheepRoot = sm.build()
         sheepRoot?.uploadToGPU()
         
-        // åœ°é¢
+        // ¹¹½¨Ğ¡Óã
+        val fm = FishModel3D()
+        fishModel = fm
+        fishRoot = fm.build()
+        fishRoot?.uploadToGPU()
+        
+        activePet = sheepRoot // Ä¬ÈÏĞ¡Ñò
+        
+        // µØÃæ
         val groundPlane = PrimitiveBuilder.createPlane(8f, 8f, 8, 8)
         groundPlane.colorR = 0.3f; groundPlane.colorG = 0.7f; groundPlane.colorB = 0.2f
         ground = Model3D()
@@ -79,77 +99,69 @@ class PetRenderer {
         ground!!.translateY = -0.7f
         ground!!.uploadToGPU()
         
-        // åˆå§‹åŒ–è‰åœ°
-        initGrassModels()
-        
-        // åˆå§‹åŒ–èŠ±æœµ
-        initFlowerModels()
-        
-        // åˆå§‹åŒ–è´è¶
-        initButterflyModels()
-        
-        // å¤©ç©ºçƒç½©ï¼ˆç®€åŒ– - ç”¨åŠåœ†ï¼‰
+        // Ìì¿Õ
         skyDome = PrimitiveBuilder.createSphere(5f, 16, 16)
         skyDome!!.colorR = 0.6f; skyDome!!.colorG = 0.8f; skyDome!!.colorB = 1.0f
         skyDome!!.colorA = 0.3f
         skyDome!!.uploadToGPU()
         
+        // ³õÊ¼»¯²İµØ
+        sheepEnv.init()
+        initGrassModels()
+        initFlowerModels()
+        initButterflyModels()
+        
         camera.fov = 40f
-        camera.distance = camDistance
-        camera.theta = camTheta
-        camera.phi = camPhi
+        camera.distance = 5.5f
+        camera.theta = 30f
+        camera.phi = 25f
+        
+        GLES20.glClearColor(0.05f, 0.08f, 0.12f, 1.0f)
         
         isReady = true
     }
     
     private fun initGrassModels() {
         grassModels.clear()
-        val env = environment ?: return
-        for (blade in env.getGrass()) {
+        for (blade in sheepEnv.grassBlades) {
             val gModel = Model3D()
-            // ç”¨ç»†é•¿çš„ä¸‰è§’å½¢ä»£è¡¨è‰
-            val verts = floatArrayOf(
-                -0.005f, 0f, 0f,
-                0.005f, 0f, 0f,
-                0f, blade.height, 0f
-            )
-            val norms = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f)
-            val idxs = shortArrayOf(0, 1, 2)
-            gModel.vertices = verts; gModel.normals = norms; gModel.indices = idxs
+            gModel.vertices = floatArrayOf(-0.005f, 0f, 0f, 0.005f, 0f, 0f, 0f, blade.height, 0f)
+            gModel.normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f)
+            gModel.indices = shortArrayOf(0, 1, 2)
             gModel.colorR = blade.colorR; gModel.colorG = blade.colorG; gModel.colorB = blade.colorB
-            gModel.translateX = blade.x / 2f
+            gModel.translateX = blade.x * 0.5f
             gModel.translateY = -0.7f
-            gModel.translateZ = -1f
+            gModel.translateZ = blade.z * 0.5f
             gModel.uploadToGPU()
             grassModels.add(gModel)
         }
     }
     
     private fun initFlowerModels() {
-        val env = environment ?: return
         flowerModels.clear()
-        for (flower in env.getFlowers()) {
+        for (flower in sheepEnv.flowers) {
             val fModel = PrimitiveBuilder.createEllipsoid(0.02f, 0.02f, 0.02f, 6, 6)
             fModel.colorR = flower.colorR; fModel.colorG = flower.colorG; fModel.colorB = flower.colorB
             val fRoot = Model3D()
             fRoot.children.add(fModel)
-            fRoot.translateX = flower.x
+            fRoot.translateX = flower.x * 0.5f
             fRoot.translateY = -0.65f
-            fRoot.translateZ = flower.z
+            fRoot.translateZ = flower.z * 0.5f
             fRoot.uploadToGPU()
             flowerModels.add(fRoot)
         }
     }
     
     private fun initButterflyModels() {
-        val env = environment ?: return
         butterflyModels.clear()
-        for (bfly in env.getButterflies()) {
+        for (bfly in sheepEnv.butterflies) {
             val bModel = PrimitiveBuilder.createEllipsoid(0.02f, 0.01f, 0.005f, 6, 4)
             bModel.colorR = bfly.colorR; bModel.colorG = bfly.colorG; bModel.colorB = bfly.colorB
             val bRoot = Model3D()
             bRoot.children.add(bModel)
-            bRoot.translateX = bfly.x; bRoot.translateY = bfly.y; bRoot.translateZ = bfly.z
+            bRoot.translateX = bfly.x * 0.5f
+            bRoot.translateY = bfly.y
+            bRoot.translateZ = bfly.z * 0.5f
             bRoot.uploadToGPU()
             butterflyModels.add(bRoot)
         }
@@ -158,188 +170,96 @@ class PetRenderer {
     fun update(dt: Float) {
         if (!isReady) return
         animTime += dt
+        timeOfDay += dt * 0.005f
+        if (timeOfDay > 24f) timeOfDay -= 24f
         
-        val env = environment ?: return
-        val brain = sheepState ?: return
-        
-        // æ›´æ–°ç›¸æœº
-        camera.distance = camDistance
-        camera.theta = camTheta + sin(animTime * 0.3f) * 2f
-        camera.phi = camPhi + sin(animTime * 0.5f) * 1f
-        camera.targetOffsetY = camTargetOffset
-        
-        // æ›´æ–°å…‰ç…§
-        val timeInfo = env.getTimeInfo()
-        val dayLight = timeInfo.daylight
-        ambient = 0.15f + dayLight * 0.35f
-        
-        val sunAngle = (timeInfo.hour - 6f) / 12f * PI
+        // ¸üĞÂ¹âÕÕ
+        val sunAngle = (timeOfDay - 6f) / 12f * PI
+        val dayLight = when {
+            timeOfDay in 6f..17f -> 1f
+            timeOfDay < 5f || timeOfDay >= 20f -> 0.1f
+            timeOfDay in 5f..6f -> 0.3f
+            else -> 0.5f
+        }
+        ambient = 0.15f + dayLight.toFloat() * 0.35f
         lightDir[0] = sin(sunAngle.toFloat()) * 0.8f
         lightDir[1] = cos(sunAngle.toFloat()) * 0.8f
         lightDir[2] = 0.3f
         
-        // ==== è®¡ç®—åŠ¨ç”»å§¿åŠ¿ ====
-        val state = brain.currentState
+        // ¸üĞÂÑòµÄ·ç
+        sheepEnv.windStrength = 0.1f + sin(animTime * 0.3f) * 0.1f
         
-        // æ”¾æ¾å‘¼å¸
-        val breath = sin(animTime * 2f) * 0.02f
-        pose.bodyTilt = 0f
-        pose.bodySway = sin(animTime * 1.5f) * 0.5f
-        
-        // è…¿éƒ¨åŠ¨ç”»
-        var legCycle = 0f
-        var bodyBob = 0f
-        val isMoving = brain.isMoving()
-        
-        when (state) {
-            SheepState.State.IDLE -> {
-                pose.headTilt = sin(animTime * 1.5f) * 3f
-                pose.headSway = sin(animTime * 0.8f) * 2f
-                pose.tailWag = sin(animTime * 2f) * 5f
-                pose.squashY = breath * 0.5f
-                pose.squashX = -breath * 0.25f
-                pose.blink = if ((animTime * 0.5f).toInt() % 10 == 0) -0.7f else 0f
-            }
-            
-            SheepState.State.WALKING, SheepState.State.EXPLORING -> {
-                legCycle = animTime * brain.moveSpeed * 3f
-                bodyBob = abs(sin(legCycle)) * 0.03f
-                pose.leftFrontLegAngle = sin(legCycle) * 20f
-                pose.rightFrontLegAngle = sin(legCycle + PI.toFloat()) * 20f
-                pose.leftBackLegAngle = sin(legCycle + PI.toFloat()) * 20f
-                pose.rightBackLegAngle = sin(legCycle) * 20f
-                pose.bodyTilt = sin(animTime * 3f) * 1f
-                pose.tailWag = sin(animTime * 4f) * 10f
-                pose.bobOffset = bodyBob * 10f
-                pose.squashY = -bodyBob * 5f
-                pose.headTilt = 5f
-            }
-            
-            SheepState.State.GRAZING -> {
-                pose.headTilt = 35f + sin(animTime * 3f) * 5f
-                pose.bodyTilt = 10f
-                pose.tailWag = sin(animTime * 2.5f) * 3f
-                pose.leftFrontLegAngle = 15f
-                pose.rightFrontLegAngle = 15f
-                pose.blink = sin(animTime * 2f) * 0.2f
-            }
-            
-            SheepState.State.SLEEPING -> {
-                pose.headTilt = 20f
-                pose.bodyTilt = -15f
-                pose.squashY = -0.1f
-                pose.squashX = 0.05f
-                pose.squashZ = 0.05f
-                pose.leftFrontLegAngle = 30f
-                pose.rightFrontLegAngle = -30f
-                pose.leftBackLegAngle = -30f
-                pose.rightBackLegAngle = 30f
-                pose.blink = -1f
-                pose.headSway = sin(animTime * 1f) * 1f
-            }
-            
-            SheepState.State.HOPPING -> {
-                val jumpPhase = animTime * 8f
-                val hopHeight = abs(sin(jumpPhase))
-                pose.bobOffset = hopHeight * 15f
-                pose.squashY = -hopHeight * 0.3f
-                pose.squashX = hopHeight * 0.15f
-                pose.squashZ = hopHeight * 0.15f
-                pose.leftFrontLegAngle = -hopHeight * 30f
-                pose.rightFrontLegAngle = hopHeight * 30f
-                pose.leftBackLegAngle = hopHeight * 30f
-                pose.rightBackLegAngle = -hopHeight * 30f
-                pose.tailWag = sin(animTime * 10f) * 20f
-                pose.headTilt = hopHeight * 10f
-            }
-            
-            SheepState.State.PLAYING -> {
-                pose.bodySway = sin(animTime * 5f) * 5f
-                pose.headTilt = sin(animTime * 4f) * 10f + 10f
-                pose.headSway = sin(animTime * 3f) * 8f
-                pose.leftFrontLegAngle = sin(animTime * 6f) * 25f
-                pose.rightFrontLegAngle = sin(animTime * 6f + PI.toFloat()) * 25f
-                pose.tailWag = sin(animTime * 6f) * 30f
-                pose.squashY = sin(animTime * 5f) * 0.05f
-            }
-            
-            SheepState.State.HEADBUTTING -> {
-                val bt = animTime * 10f
-                pose.headTilt = -sin(bt).coerceAtLeast(0f) * 20f
-                pose.headSway = sin(bt) * 5f
-                pose.bodyTilt = sin(bt) * 5f
-                pose.leftFrontLegAngle = 10f
-                pose.rightFrontLegAngle = -10f
-            }
-            
-            SheepState.State.STARTLED -> {
-                val st = animTime * 12f
-                pose.bobOffset = abs(sin(st)) * 20f
-                pose.squashX = cos(st) * 0.15f
-                pose.squashZ = cos(st) * 0.15f
-                pose.headTilt = -10f
-                pose.leftFrontLegAngle = -60f
-                pose.rightFrontLegAngle = 60f
-                pose.tailWag = 0f
-            }
-            
-            SheepState.State.SINGING -> {
-                pose.headTilt = sin(animTime * 6f) * 5f + 5f
-                pose.bodySway = sin(animTime * 3f) * 2f
-                pose.squashY = sin(animTime * 6f) * 0.02f
-                pose.tailWag = sin(animTime * 6f) * 5f
-            }
-            
-            SheepState.State.CURIOUS -> {
-                pose.headTilt = 15f + sin(animTime * 3f) * 8f
-                pose.headSway = sin(animTime * 2f) * 5f
-                pose.bodyTilt = 5f
-            }
-            
-            SheepState.State.GREETING -> {
-                pose.headTilt = -5f + sin(animTime * 6f) * 5f
-                pose.tailWag = sin(animTime * 8f) * 25f
-                pose.bodySway = sin(animTime * 4f) * 3f
-            }
-            
-            else -> {}
+        // ¸üĞÂºûµû
+        for ((i, bfly) in sheepEnv.butterflies.withIndex()) {
+            if (i >= butterflyModels.size) break
+            bfly.phase += dt * 3f
+            butterflyModels[i].translateX = bfly.x * 0.5f
+            butterflyModels[i].translateY = bfly.y + sin(bfly.phase) * 0.03f
+            butterflyModels[i].translateZ = bfly.z * 0.5f
+            butterflyModels[i].rotateY = sin(bfly.phase) * 30f
+            butterflyModels[i].rotateX = sin(bfly.phase * 0.5f) * 15f
         }
         
-        // èŠ±ç“£æ—‹è½¬
-        pose.flowerSpin = animTime * 20f
-        
-        // æ›´æ–°èŠ±ç²‰ç²’å­
-        particleTimer += dt
-        if (particleTimer > 0.1f && state == SheepState.State.HOPPING) {
-            particleTimer = 0f
-            addParticle(
-                0f, 0f, 0f,
-                (Math.random().toFloat() - 0.5f) * 0.3f, 0.3f + Math.random().toFloat() * 0.3f,
-                (Math.random().toFloat() - 0.5f) * 0.3f,
-                0.5f + Math.random().toFloat() * 0.5f,
-                0.8f, 0.5f, 0.9f, 0.02f
-            )
+        // ¸üĞÂ²İµØÒ¡°Ú
+        for ((i, blade) in sheepEnv.grassBlades.withIndex()) {
+            if (i >= grassModels.size) break
+            blade.swayPhase += dt * 2f
         }
         
-        // æ›´æ–°ç²’å­
+        // ¸üĞÂ¶¯»­×ËÊÆ
+        updatePose(dt)
+        
+        // ¸üĞÂÏà»ú
+        camera.distance = 5.5f
+        camera.theta = 30f + sin(animTime * 0.3f) * 2f
+        camera.phi = 25f + sin(animTime * 0.5f) * 1f
+        camera.targetOffsetY = 0.5f
+        
+        // ¸üĞÂÌØĞ§
+        fxHearts = maxOf(0f, fxHearts - dt); fxStars = maxOf(0f, fxStars - dt)
+        fxNotes = maxOf(0f, fxNotes - dt); fxBlush = maxOf(0f, fxBlush - dt)
+        fxExclaim = maxOf(0f, fxExclaim - dt); fxBubbles = maxOf(0f, fxBubbles - dt)
+        
+        // ¸üĞÂÁ£×Ó
         val iter = particles.iterator()
         while (iter.hasNext()) {
             val p = iter.next()
             p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt
-            p.vy -= 0.2f * dt  // é‡åŠ›
+            p.vy -= 0.5f * dt
             p.life -= dt
             if (p.life <= 0f) iter.remove()
         }
-        
-        // æ›´æ–°è´è¶ä½ç½®
-        for (i in butterflyModels.indices) {
-            val bfly = env.getButterflies().getOrNull(i) ?: continue
-            val bModel = butterflyModels[i]
-            bModel.translateX = bfly.x
-            bModel.translateY = bfly.y
-            bModel.translateZ = bfly.z + 0.5f
-            bModel.rotateY = sin(bfly.phase) * 30f
-            bModel.rotateX = sin(bfly.phase * 0.5f) * 15f
+    }
+    
+    private fun updatePose(dt: Float) {
+        when (currentPetType) {
+            PetType.SHEEP -> {
+                val breath = sin(animTime * 2f) * 0.02f
+                sheepPose.bodySway = sin(animTime * 1.5f) * 0.5f
+                sheepPose.headTilt = sin(animTime * 1.5f) * 3f
+                sheepPose.tailWag = sin(animTime * 2f) * 5f
+                sheepPose.squashY = breath * 0.5f
+                sheepPose.blink = if ((animTime * 0.5f).toInt() % 10 == 0) -0.7f else 0f
+                sheepPose.flowerSpin = animTime * 20f
+                
+                // ÇáÎ¢°Ú¶¯
+                sheepPose.leftFrontLegAngle = sin(animTime * 1.5f) * 3f
+                sheepPose.rightFrontLegAngle = sin(animTime * 1.5f + PI.toFloat()) * 3f
+                sheepPose.leftBackLegAngle = sin(animTime * 1.5f + PI.toFloat()) * 3f
+                sheepPose.rightBackLegAngle = sin(animTime * 1.5f) * 3f
+                
+                sheepModel?.applyPose(sheepPose)
+            }
+            PetType.FISH -> {
+                fishPose.bodySway = sin(animTime * 2f) * 5f
+                fishPose.tailSway = sin(animTime * 4f) * 20f
+                fishPose.pectoralAngle = sin(animTime * 3f) * 10f
+                fishPose.mouthOpen = sin(animTime * 1.5f) * 0.3f + 0.5f
+                fishPose.blink = if ((animTime * 0.6f).toInt() % 8 == 0) -0.8f else 0f
+                fishPose.bodyBob = sin(animTime * 1.2f) * 0.02f
+                
+                fishModel?.applyPose(fishPose)
+            }
         }
     }
     
@@ -350,220 +270,150 @@ class PetRenderer {
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
         GLES20.glEnable(GLES20.GL_CULL_FACE)
         
-        // æ›´æ–°ç›¸æœº
         camera.update(width, height)
-        
         shader.use()
         
-        // è®¾ç½®ç€è‰²å™¨uniforms
         val vp = camera.vpMatrix
         val model = FloatArray(16)
         val mvp = FloatArray(16)
         
-        val lightDirN = FloatArray(3)
-        val len = sqrt(lightDir[0]*lightDir[0] + lightDir[1]*lightDir[1] + lightDir[2]*lightDir[2])
-        lightDirN[0] = lightDir[0]/len; lightDirN[1] = lightDir[1]/len; lightDirN[2] = lightDir[2]/len
-        
-        GLES20.glUniform3f(shader.uLightDirLoc, lightDirN[0], lightDirN[1], lightDirN[2])
+        val ldLen = sqrt(lightDir[0]*lightDir[0] + lightDir[1]*lightDir[1] + lightDir[2]*lightDir[2])
+        GLES20.glUniform3f(shader.uLightDirLoc, lightDir[0]/ldLen, lightDir[1]/ldLen, lightDir[2]/ldLen)
         GLES20.glUniform1f(shader.uAmbientLoc, ambient)
         GLES20.glUniform1f(shader.uTimeLoc, animTime)
         
-        // ç»˜åˆ¶å¤©ç©ºçƒ
+        // === Ìì¿Õ ===
+        val skyColor = when {
+            timeOfDay < 5f || timeOfDay >= 20f -> floatArrayOf(0.05f, 0.08f, 0.15f)
+            timeOfDay in 5f..7f -> floatArrayOf(0.7f, 0.4f, 0.3f)
+            timeOfDay in 17f..19f -> floatArrayOf(0.7f, 0.35f, 0.2f)
+            else -> floatArrayOf(0.3f, 0.6f, 0.9f)
+        }
         Matrix.setIdentityM(model, 0)
         Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-        GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-        GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
-        
-        // å¤©ç©ºé¢œè‰²
-        val env = environment ?: return
-        val timeInfo = env.getTimeInfo()
-        val skyColor = if (timeInfo.isNight) floatArrayOf(0.08f, 0.1f, 0.2f)
-            else if (timeInfo.isMorning) floatArrayOf(0.8f, 0.6f, 0.4f)
-            else if (timeInfo.isEvening) floatArrayOf(0.8f, 0.4f, 0.2f)
-            else floatArrayOf(0.4f, 0.7f, 1.0f)
-        
+        setShaderUniforms(mvp, model)
         GLES20.glDisable(GLES20.GL_CULL_FACE)
         GLES20.glDepthMask(false)
-        skyDome?.let {
-            GLES20.glUniform4f(shader.uColorLoc, skyColor[0], skyColor[1], skyColor[2], 1f)
-            it.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
-        }
+        GLES20.glUniform4f(shader.uColorLoc, skyColor[0], skyColor[1], skyColor[2], 1f)
+        skyDome?.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
         GLES20.glDepthMask(true)
         GLES20.glEnable(GLES20.GL_CULL_FACE)
         
-        // ç»˜åˆ¶åœ°é¢
+        // === µØÃæ ===
         Matrix.setIdentityM(model, 0)
         Matrix.translateM(model, 0, 0f, -0.7f, 0f)
+        val groundColor = if (currentPetType == PetType.FISH) floatArrayOf(0.1f, 0.2f, 0.4f) else floatArrayOf(0.3f, 0.6f, 0.2f)
         Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-        GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-        GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
+        setShaderUniforms(mvp, model)
+        GLES20.glUniform4f(shader.uColorLoc, groundColor[0], groundColor[1], groundColor[2], 1f)
+        ground?.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
         
-        ground?.let {
-            val weather = env.getWeather()
-            val groundColor = when (weather) {
-                Environment.Weather.RAINY -> floatArrayOf(0.2f, 0.5f, 0.15f)
-                Environment.Weather.SNOWY -> floatArrayOf(0.8f, 0.85f, 0.9f)
-                Environment.Weather.STORMY -> floatArrayOf(0.15f, 0.4f, 0.1f)
-                else -> floatArrayOf(0.3f, 0.7f, 0.2f)
+        // === ²İµØ ===
+        if (currentPetType == PetType.SHEEP) {
+            for ((i, blade) in sheepEnv.grassBlades.withIndex()) {
+                if (i >= grassModels.size) break
+                val gModel = grassModels[i]
+                Matrix.setIdentityM(model, 0)
+                Matrix.translateM(model, 0, (blade.x) * 0.5f, -0.7f, blade.z * 0.5f)
+                val sway = sin(animTime * 2f + blade.swayPhase) * sheepEnv.windStrength * 0.15f
+                Matrix.rotateM(model, 0, sway, 0f, 0f, 1f)
+                Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
+                setShaderUniforms(mvp, model)
+                GLES20.glUniform4f(shader.uColorLoc, blade.colorR, blade.colorG, blade.colorB, 1f)
+                gModel.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
             }
-            GLES20.glUniform4f(shader.uColorLoc, groundColor[0], groundColor[1], groundColor[2], 1f)
-            it.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
+            
+            // »¨¶ä
+            for (flower in flowerModels) {
+                Matrix.setIdentityM(model, 0)
+                Matrix.translateM(model, 0, flower.translateX, flower.translateY, flower.translateZ)
+                Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
+                setShaderUniforms(mvp, model)
+                flower.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
+            }
+            
+            // ºûµû
+            for (bfly in butterflyModels) {
+                Matrix.setIdentityM(model, 0)
+                Matrix.translateM(model, 0, bfly.translateX, bfly.translateY, bfly.translateZ)
+                Matrix.rotateM(model, 0, bfly.rotateY, 0f, 1f, 0f)
+                Matrix.rotateM(model, 0, bfly.rotateX, 1f, 0f, 0f)
+                Matrix.scaleM(model, 0, 1f + sin(animTime * 8f) * 0.3f, 1f, 1f)
+                Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
+                setShaderUniforms(mvp, model)
+                bfly.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
+            }
         }
         
-        // ç»˜åˆ¶è‰åœ°
-        for ((i, blade) in env.getGrass().withIndex()) {
-            if (blade.isEaten) continue
-            if (i >= grassModels.size) break
-            val gModel = grassModels[i]
-            Matrix.setIdentityM(model, 0)
-            Matrix.translateM(model, 0, (blade.x - 2f) / 2f, -0.7f, -1f)
-            val sway = sin(animTime * 2f + blade.swayPhase) * env.windStrength * 0.1f
-            Matrix.rotateM(model, 0, sway, 0f, 0f, 1f)
-            Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-            GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-            GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
-            GLES20.glUniform4f(shader.uColorLoc, blade.colorR, blade.colorG, blade.colorB, 1f)
-            gModel.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
-        }
-        
-        // ç»˜åˆ¶èŠ±æœµ
-        for (flower in flowerModels) {
-            Matrix.setIdentityM(model, 0)
-            Matrix.translateM(model, 0, flower.translateX, flower.translateY, flower.translateZ)
-            val sway = sin(animTime * 2f + Math.random().toFloat() * 6.28f) * env.windStrength * 0.05f
-            Matrix.rotateM(model, 0, sway, 0f, 0f, 1f)
-            Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-            GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-            GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
-            flower.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
-        }
-        
-        // ç»˜åˆ¶å°ç¾Š
-        val sheepPosX = sin(animTime * brainMoveSpeed()) * 0.3f
-        val sheepPosY = -0.1f + pose.bobOffset * 0.01f
-        
+        // === ³èÎï ===
         Matrix.setIdentityM(model, 0)
-        Matrix.translateM(model, 0, sheepPosX, sheepPosY, 0f)
-        Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-        GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-        GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
-        
-        sheepModel.applyPose(pose)
-        sheepRoot?.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
-        
-        // ç»˜åˆ¶è´è¶
-        for (bfly in butterflyModels) {
-            Matrix.setIdentityM(model, 0)
-            Matrix.translateM(model, 0, bfly.translateX, bfly.translateY + sin(animTime * 2f) * 0.05f, bfly.translateZ)
-            Matrix.rotateM(model, 0, bfly.rotateY, 0f, 1f, 0f)
-            Matrix.rotateM(model, 0, bfly.rotateX, 1f, 0f, 0f)
-            Matrix.scaleM(model, 0, 1f + sin(animTime * 8f + bfly.translateX) * 0.3f, 1f, 1f)
-            Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-            GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-            GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
-            bfly.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
+        val pScale = when (currentPetType) {
+            PetType.SHEEP -> petScale * 0.5f
+            PetType.FISH -> petScale * 0.6f
         }
+        Matrix.translateM(model, 0, petX * 0.5f, -0.1f, petZ * 0.5f)
+        Matrix.scaleM(model, 0, pScale, pScale, pScale)
+        Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
+        setShaderUniforms(mvp, model)
+        GLES20.glUniform4f(shader.uColorLoc, 1f, 1f, 1f, 1f)
+        activePet?.draw(model, mvp, shader.aPositionLoc, shader.aNormalLoc, shader.uModelLoc, shader.uColorLoc)
         
-        // ç»˜åˆ¶ç²’å­
+        // === Á£×Ó ===
         GLES20.glDisable(GLES20.GL_CULL_FACE)
         GLES20.glEnable(GLES20.GL_BLEND)
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE)
-        
         for (p in particles) {
             Matrix.setIdentityM(model, 0)
             Matrix.translateM(model, 0, p.x, p.y, p.z + 0.5f)
             val s = p.size * (p.life / p.maxLife)
             Matrix.scaleM(model, 0, s, s, s)
             Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-            GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-            GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
+            setShaderUniforms(mvp, model)
             GLES20.glUniform4f(shader.uColorLoc, p.r, p.g, p.b, p.life / p.maxLife)
-            
+            // ¼òµ¥ÇòÌå´úÌæÁ£×Ó
             val tempM = FloatArray(16)
             Matrix.setIdentityM(tempM, 0)
-            // ç”¨ä¸€ä¸ªå°çƒä½“ä»£è¡¨ç²’å­
-            val particleModel = PrimitiveBuilder.createSphere(1f, 4, 4)
-            particleModel.draw(tempM, mvp, shader.aPositionLoc, -1, shader.uModelLoc, shader.uColorLoc)
         }
-        
         GLES20.glDisable(GLES20.GL_BLEND)
         GLES20.glEnable(GLES20.GL_CULL_FACE)
-        
-        // ç»˜åˆ¶é›¨æ°´ç‰¹æ•ˆ
-        if (env.rainIntensity > 0.1f) {
-            drawRain(vp, width, height, env.rainIntensity)
-        }
     }
     
-    private fun addParticle(x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, 
-                            life: Float, r: Float, g: Float, b: Float, size: Float) {
-        particles.add(Particle(x, y, z, vx, vy, vz, life, life, r, g, b, size))
+    private fun setShaderUniforms(mvp: FloatArray, model: FloatArray) {
+        GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
+        GLES20.glUniformMatrix4fv(shader.uModelLoc, 1, false, model, 0)
     }
-    
-    private var brainMoveSpeed: () -> Float = { 0.3f }
-    fun setBrainMoveSpeed(speed: () -> Float) { brainMoveSpeed = speed }
     
     fun addParticlesForEffect(type: String, count: Int = 10) {
         when (type) {
             "hearts" -> for (i in 0 until count) addParticle(
-                (Math.random().toFloat() - 0.5f) * 0.3f, 0.2f + Math.random().toFloat() * 0.3f,
-                (Math.random().toFloat() - 0.5f) * 0.3f,
-                (Math.random().toFloat() - 0.5f) * 0.2f, 0.3f + Math.random().toFloat() * 0.3f,
-                (Math.random().toFloat() - 0.5f) * 0.2f,
-                0.8f + Math.random().toFloat() * 0.5f,
-                1f, 0.3f, 0.5f, 0.03f)
+                (r()-0.5f)*0.3f, 0.2f+r()*0.3f, (r()-0.5f)*0.3f,
+                (r()-0.5f)*0.2f, 0.3f+r()*0.3f, (r()-0.5f)*0.2f,
+                0.8f+r()*0.5f, 1f, 0.3f, 0.5f, 0.03f)
             "stars" -> for (i in 0 until count) addParticle(
-                (Math.random().toFloat() - 0.5f) * 0.4f, 0.3f + Math.random().toFloat() * 0.3f,
-                (Math.random().toFloat() - 0.5f) * 0.4f,
-                (Math.random().toFloat() - 0.5f) * 0.3f, 0.2f + Math.random().toFloat() * 0.4f,
-                (Math.random().toFloat() - 0.5f) * 0.3f,
-                0.6f + Math.random().toFloat() * 0.4f,
-                1f, 0.8f, 0.2f, 0.025f)
+                (r()-0.5f)*0.4f, 0.3f+r()*0.3f, (r()-0.5f)*0.4f,
+                (r()-0.5f)*0.3f, 0.2f+r()*0.4f, (r()-0.5f)*0.3f,
+                0.6f+r()*0.4f, 1f, 0.8f, 0.2f, 0.025f)
             "notes" -> for (i in 0 until count) addParticle(
-                (Math.random().toFloat() - 0.5f) * 0.2f, 0.1f + Math.random().toFloat() * 0.2f,
-                (Math.random().toFloat() - 0.5f) * 0.2f,
-                (Math.random().toFloat() - 0.5f) * 0.1f, 0.2f,
-                (Math.random().toFloat() - 0.5f) * 0.1f,
-                0.5f + Math.random().toFloat() * 0.3f,
-                0.5f, 0.3f, 1f, 0.02f)
+                (r()-0.5f)*0.2f, 0.1f+r()*0.2f, (r()-0.5f)*0.2f,
+                (r()-0.5f)*0.1f, 0.2f, (r()-0.5f)*0.1f,
+                0.5f+r()*0.3f, 0.5f, 0.3f, 1f, 0.02f)
             "blush" -> for (i in 0 until count) addParticle(
-                (Math.random().toFloat() - 0.5f) * 0.3f, -0.1f,
-                (Math.random().toFloat() - 0.5f) * 0.3f,
-                (Math.random().toFloat() - 0.5f) * 0.1f, 0.1f,
-                (Math.random().toFloat() - 0.5f) * 0.1f,
-                0.4f + Math.random().toFloat() * 0.3f,
-                1f, 0.4f, 0.6f, 0.04f)
+                (r()-0.5f)*0.3f, -0.1f, (r()-0.5f)*0.3f,
+                (r()-0.5f)*0.1f, 0.1f, (r()-0.5f)*0.1f,
+                0.4f+r()*0.3f, 1f, 0.4f, 0.6f, 0.04f)
+            "bubbles" -> for (i in 0 until count) addParticle(
+                (r()-0.5f)*0.2f, 0f, (r()-0.5f)*0.2f,
+                (r()-0.5f)*0.1f, 0.2f+r()*0.3f, (r()-0.5f)*0.1f,
+                0.6f+r()*0.4f, 0.5f, 0.7f, 1f, 0.015f)
         }
     }
     
-    private fun drawRain(vp: FloatArray, width: Float, height: Float, intensity: Float) {
-        GLES20.glDisable(GLES20.GL_DEPTH_TEST)
-        GLES20.glLineWidth(2f)
-        
-        val count = (intensity * 40).toInt().coerceAtMost(60)
-        val model = FloatArray(16)
-        val mvp = FloatArray(16)
-        
-        for (i in 0 until count) {
-            val rx = (i * 47.7f + animTime * 200f) % 5f - 2.5f
-            val ry = (i * 73.3f + animTime * 400f + (i % 3) * 2f) % 5f - 2.5f
-            val rz = (i * 31.1f) % 3f - 1.5f
-            
-            Matrix.setIdentityM(model, 0)
-            Matrix.translateM(model, 0, rx, ry - 0.5f, rz)
-            Matrix.multiplyMM(mvp, 0, vp, 0, model, 0)
-            GLES20.glUniformMatrix4fv(shader.uMVPLoc, 1, false, mvp, 0)
-            
-            // ç”¨çº¿æ¡ç»˜åˆ¶é›¨æ»´
-            val rainLine = Model3D()
-            rainLine.vertices = floatArrayOf(0f, 0.1f, 0f, 0f, -0.1f, 0f)
-            rainLine.normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f)
-            rainLine.colorR = 0.5f; rainLine.colorG = 0.7f; rainLine.colorB = 1.0f; rainLine.colorA = 0.3f
-            rainLine.draw(model, mvp, shader.aPositionLoc, -1, shader.uModelLoc, shader.uColorLoc)
-        }
-        
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+    private fun addParticle(x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float,
+                            life: Float, r: Float, g: Float, b: Float, size: Float) {
+        particles.add(Particle(x, y, z, vx, vy, vz, life, life, r, g, b, size))
     }
+    
+    fun getCamera(): Camera = camera
     
     fun cleanup() {
         if (isReady) {
@@ -571,6 +421,5 @@ class PetRenderer {
         }
     }
     
-    /** è·å–ç›¸æœºå¼•ç”¨ï¼ˆç”¨äºå¤–éƒ¨æ§åˆ¶ï¼‰ */
-    fun getCamera(): Camera = camera
+    private fun r() = Math.random().toFloat()
 }

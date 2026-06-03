@@ -30,3 +30,6 @@ push-fix.js
 tree_item.json
 
 # SSH keys.ssh/
+
+.ssh/
+sheep_fix.js

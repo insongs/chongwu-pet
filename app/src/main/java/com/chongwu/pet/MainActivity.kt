@@ -11,10 +11,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.chongwu.pet.audio.AudioEngine
 
 /**
- * 主入口 Activity - 3D花影羚羊宠物桌面
+ * 主入口 - 3D桌面宠物启动器
  */
 class MainActivity : AppCompatActivity() {
 
@@ -26,7 +25,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var actionBtn: Button
     private lateinit var hintText: TextView
     private var isRunning = false
-    private var audioEngine: AudioEngine? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,21 +42,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 初始化音效引擎
-        audioEngine = AudioEngine(this)
-        audioEngine?.init()
-
         hintText.text = """
-            🌟 花影羚羊 · 3D桌面宠物
+            🌟 花影小羚羊 · 3D桌面宠物
             
-            一只立体的花影小羚羊，它会：
-            • 🐏 在屏幕上自由漫步、吃草、蹦跳
-            • 🌸 身带花瓣纹样，随季节变化
-            • ☀️ 昼夜交替、天气变化影响行为
-            • 👆 触摸不同部位有不同的反应
-            • 🦋 蝴蝶飞舞、草地生长的小生态
-            
-            点击下方按钮，让小羚羊来到你的桌面吧！
+            一只会走路、吃草、玩耍的小羊！
+            • 🐏 3D Q版立体造型 + 花瓣纹样
+            • 🌸 蝴蝶飞舞、草地摇曳的小世界
+            • ☀️ 昼夜交替 + 天气变化
+            • 👆 触摸身体部位有不同反应
+            • 🎵 程序化音效（咩咩叫、蹦跳声）
+            • 💤 长时间不互动自动小憩
         """.trimIndent()
     }
 
@@ -67,21 +60,13 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_REQUEST) {
-            updateStatus()
-        }
-    }
-
     private fun updateStatus() {
         isRunning = isServiceRunning(PetOverlayService::class.java)
         if (isRunning) {
-            statusText.text = "🦋 花影羚羊正在屏幕上游玩~"
+            statusText.text = "🦋 小羚羊正在屏幕上游玩~"
             actionBtn.text = getString(R.string.stop_service)
-            hintText.text = "小羚羊正在后台陪伴你！\n触摸它的不同部位，看看有什么反应~"
         } else {
-            statusText.text = "🌙 花影羚羊在休息..."
+            statusText.text = "🌙 花影小羚羊在休息..."
             actionBtn.text = getString(R.string.start_service)
         }
     }
@@ -91,15 +76,13 @@ class MainActivity : AppCompatActivity() {
             showPermissionDialog()
             return
         }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                showBatteryOptimizationDialog()
+                showBatteryDialog()
                 return
             }
         }
-
         doStartService()
     }
 
@@ -112,15 +95,14 @@ class MainActivity : AppCompatActivity() {
         }
         isRunning = true
         updateStatus()
-        audioEngine?.playHappy()
-        Toast.makeText(this, "花影羚羊来了！🦋", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "小羚羊来了！🦋", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopPet() {
         stopService(Intent(this, PetOverlayService::class.java))
         isRunning = false
         updateStatus()
-        Toast.makeText(this, "花影羚羊去休息了~", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "小羚羊去休息了~", Toast.LENGTH_SHORT).show()
     }
 
     private fun showPermissionDialog() {
@@ -138,13 +120,12 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showBatteryOptimizationDialog() {
+    private fun showBatteryDialog() {
         AlertDialog.Builder(this)
             .setTitle("建议关闭电池优化")
-            .setMessage("为了让小羚羊能在后台一直陪伴你，建议关闭电池优化。")
+            .setMessage("为了让小羚羊在后台陪伴你，建议关闭电池优化。")
             .setPositiveButton("去设置") { _, _ ->
-                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                startActivity(intent)
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }
             .setNegativeButton("跳过", null)
             .show()
@@ -156,10 +137,5 @@ class MainActivity : AppCompatActivity() {
             if (serviceClass.name == service.service.className) return true
         }
         return false
-    }
-
-    override fun onDestroy() {
-        audioEngine?.release()
-        super.onDestroy()
     }
 }
